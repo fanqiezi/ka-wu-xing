@@ -1,0 +1,16 @@
+# 系统 / 编辑器产生的垃圾
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.lnk
+.vscode/
+.idea/
+*.swp
+
+# 临时脚本 / 打包产物
+tmp-*.js
+dist/
+*.zip
+
+# 因为本项目零依赖，一般不会出现，但保险起见
+node_modules/

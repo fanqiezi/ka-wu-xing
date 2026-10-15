@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡五星麻将 · 单机版</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">中</span>
+      <div>
+        <h1>卡五星麻将</h1>
+        <p class="sub">湖北三人麻将 · 单机版</p>
+      </div>
+    </div>
+    <div class="hud">
+      <div class="hud-item"><label>局数</label><b id="hud-round">1</b></div>
+      <div class="hud-item"><label>底金</label><b id="hud-base">1</b></div>
+      <div class="hud-item"><label>剩余牌</label><b id="hud-wall">44</b></div>
+      <div class="hud-item"><label>庄家</label><b id="hud-dealer">-</b></div>
+    </div>
+    <div class="topbtns">
+      <button class="btn ghost" id="btn-history">对局记录</button>
+      <button class="btn ghost" id="btn-rules">规则</button>
+      <button class="btn ghost" id="btn-settings">设置</button>
+      <button class="btn ghost" id="btn-menu">返回菜单</button>
+      <button class="btn primary" id="btn-newmatch">新对局</button>
+    </div>
+  </header>
+
+  <main class="table" id="table">
+    <div class="opponents">
+      <section class="seat seat-opp" id="seat-2"></section>
+      <div class="center-col">
+        <div class="center-info">
+          <div class="turn-indicator" id="turn-indicator">准备开始</div>
+          <div class="center-tiles" id="center-tiles"></div>
+          <div class="center-meta" id="center-meta"></div>
+        </div>
+      </div>
+      <section class="seat seat-opp" id="seat-1"></section>
+    </div>
+
+    <section class="seat seat-self" id="seat-0"></section>
+  </main>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <span>对局记录</span>
+      <button class="btn tiny ghost" id="btn-clear-log">清空</button>
+    </div>
+    <div class="log" id="log"></div>
+  </aside>
+
+  <div class="actionbar" id="actionbar"></div>
+</div>
+
+<div class="modal-host" id="modal-host" hidden></div>
+
+<!-- 开始游戏界面 -->
+<div class="screen" id="start-screen">
+  <div class="start-card">
+    <div class="start-head">
+      <span class="logo big">中</span>
+      <div>
+        <h1>卡五星麻将</h1>
+        <p class="start-sub">湖北三人麻将 · 单机版 · 你 + 两个电脑</p>
+      </div>
+    </div>
+
+    <p class="start-desc">
+      84 张牌（筒 / 条 / 中发白），三人对战，只能碰杠不能吃。<br>
+      <b>屁胡（小胡）只能自摸</b>；听牌可以亮倒，但亮倒风险很大。
+    </p>
+
+    <div class="start-modes" id="start-modes"></div>
+
+    <div class="start-actions">
+      <button class="btn primary big" id="start-btn">开始游戏</button>
+      <button class="btn ghost" id="start-history">对局记录</button>
+      <button class="btn ghost" id="start-rules">规则</button>
+      <button class="btn ghost" id="start-settings">设置</button>
+    </div>
+
+    <p class="start-tip" id="start-tip"></p>
+  </div>
+</div>
+
+<script src="js/tiles.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/game.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

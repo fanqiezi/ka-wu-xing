@@ -1,0 +1,9 @@
+# 统一换行：Windows 批处理要 CRLF，其余文本用 LF，图片保持二进制
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.png binary
+*.jpg binary
