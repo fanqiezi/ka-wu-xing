@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 规则引擎
+        run: node tests/rules.test.js
+      - name: 牌局引擎 + 全自动对局模拟
+        run: node tests/game.test.js
+      - name: 界面联调（打桩 DOM）
+        run: node tests/ui.test.js
