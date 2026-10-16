@@ -282,7 +282,7 @@ ka-wu-xing/
 ├─ tests/
 │  ├─ rules.test.js      规则引擎自测（41 项）
 │  ├─ game.test.js       牌局引擎 + 全自动对局模拟 + 记录统计（47 项）
-│  ├─ ui.test.js         界面联调：打桩 DOM 里真跑 ui.js（29 项）
+│  ├─ ui.test.js         界面联调：打桩 DOM 里真跑 ui.js（32 项，含 3 项手机版布局/触摸）
 │  ├─ tune-liangdao.js   亮倒模型标定脚本（决策率 / 亮倒胜率 / 点炮次数，开发用）
 │  └─ dom-shim.js        极简 DOM 打桩，供界面测试用
 └─ screenshots/          界面截图
