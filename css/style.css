@@ -152,6 +152,10 @@ button { font-family: inherit; }
   display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-start;
   flex: 1 1 auto; min-width: 0;
 }
+/* 副露 + 牌河 一起包一层（手机版让这两行一起上下滑动；桌面版等价于原来直接摆两行） */
+.seat-scroll { display: flex; flex-direction: column; gap: 3px; min-height: 0; }
+/* 宽表包裹：手机版横向可滑，避免挤出弹窗 */
+.table-scroll { min-width: 0; }
 .row-label { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; margin-right: 4px; align-self: center; }
 
 .hand-row { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; padding: 4px 0; min-height: 84px; }

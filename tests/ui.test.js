@@ -531,9 +531,10 @@ function boot(seed) {
     const clickable = dom.findAll(seat0(), n => dom.hasClass(n, 'clickable'));
     assert.strictEqual(clickable.length, p0.hand.length,
       '问亮倒时手牌都该可点，实际 ' + clickable.length + ' / ' + p0.hand.length);
-    const tips = dom.findAll(dom.byId['actionbar'],
+    // （桌面版）操作栏不再挂「不想亮倒就直接点手牌」这句提示，直接点牌就行
+    const selfTip = dom.findAll(dom.byId['actionbar'],
       n => n.textContent && n.textContent.indexOf('直接点手牌') >= 0);
-    assert.ok(tips.length > 0, '操作栏应提示「不想亮倒就直接点手牌」');
+    assert.strictEqual(selfTip.length, 0, '这句提示已按要求删掉');
 
     // 直接点刚摸的那张（手牌行最后一张）
     const drawnTile = H('5t')[0];
@@ -623,7 +624,7 @@ function boot(seed) {
     g.stop();
   });
 
-  await atest('亮倒的对手：亮出的牌单独一行，手牌行全盖着', async () => {
+  await atest('亮倒的对手：亮出的牌单独一行，手牌行全盖着且张数要减去亮出的牌', async () => {
     const g = win.KWX_UI.getGame();
     g.stop();
     g.playing = true;   // 只看「局中」的展示（结束时会全部摊开）
@@ -640,11 +641,11 @@ function boot(seed) {
     const seat1 = dom.byId['seat-1'];
     const handRow = dom.findAll(seat1, n => dom.hasClass(n, 'hand-row'))[0];
     assert.ok(handRow, '应有手牌行');
-    // 手牌行：13 张全盖着
+    // 手牌行：亮出 2 张后应只剩 13-2=11 张牌背（亮出去的牌已经摊在亮倒行里了）
     const handFaces = dom.findAll(handRow, n => dom.hasClass(n, 'tile') && !dom.hasClass(n, 'back'));
     const handBacks = dom.findAll(handRow, n => dom.hasClass(n, 'back'));
     assert.strictEqual(handFaces.length, 0, '手牌行不该露出牌面，实际 ' + handFaces.length);
-    assert.strictEqual(handBacks.length, 13, '手牌行应全是牌背，实际 ' + handBacks.length);
+    assert.strictEqual(handBacks.length, 13 - 2, '手牌行应是 13-2=11 张牌背，实际 ' + handBacks.length);
 
     // 单独的「亮倒」行：只有 78 两张
     const revRow = dom.findAll(seat1, n => dom.hasClass(n, 'reveal-row'))[0];
@@ -828,6 +829,43 @@ function boot(seed) {
     assert.strictEqual(dom.byId['hud'].parentNode, dom.byId['topbar']);
   });
 
+  await atest('竖屏：询问栏在自己方框上方单独一排，操作历史摆在中间空当', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    if (g) g.stop();
+    const table = dom.byId['table'];
+    const bar = dom.byId['actionbar'];
+    const side = dom.byId['sidebar'];
+
+    ui.setLayout('portrait');
+    assert.strictEqual(bar.parentNode, table, '竖屏：询问栏应搬进牌桌（单独一排），实际挂在 ' + (bar.parentNode && bar.parentNode.id));
+    assert.strictEqual(side.parentNode, table, '竖屏：操作历史应搬进牌桌中间空当');
+    const kids = table.children;
+    assert.ok(kids.indexOf(bar) >= 0 && kids.indexOf(side) >= 0,
+      '竖屏：询问栏和操作历史都要挂在牌桌里，实际顺序 ' + kids.map(n => n.id || n.className).join(' > '));
+    // 视觉上的上下顺序由 mobile.css 的栅格行决定：
+    // 1 对手 / 2 操作历史（中间下面的空当）/ 3 询问栏（固定 54px 单独一排）/ 4 自己
+    const css = fs.readFileSync(path.join(ROOT, 'css/mobile.css'), 'utf8');
+    const rows = {};
+    ['sidebar', 'actionbar', 'seat-self'].forEach(function (sel) {
+      const s = sel.replace('-', '\\-');
+      const re = new RegExp('body\\.layout-mobile\\.layout-portrait\\s+\\.' + s + '\\s*\\{[^}]*grid-row:\\s*(\\d+)');
+      const m = re.exec(css);
+      rows[sel] = m ? Number(m[1]) : null;
+    });
+    assert.ok(rows['sidebar'] && rows['actionbar'] && rows['seat-self'],
+      '竖屏栅格应分别给操作历史/询问栏/自己指定行号，实际 ' + JSON.stringify(rows));
+    assert.ok(rows['sidebar'] < rows['actionbar'] && rows['actionbar'] < rows['seat-self'],
+      '竖屏应从下到上为「操作历史 > 询问栏 > 自己」，实际 ' + JSON.stringify(rows));
+
+    ui.setLayout('landscape');
+    assert.strictEqual(side.parentNode, dom.byId['app'], '横屏：操作历史回到右侧栏');
+    assert.strictEqual(bar.parentNode, table, '横屏：询问栏留在牌桌里（自己那一行的右侧）');
+    const lcss = css;
+    assert.ok(/body\.layout-mobile\.layout-landscape\s+\.actionbar\s*\{[^}]*grid-column:\s*2/.test(lcss),
+      '横屏：询问栏应摆在自己那一行的第 2 列（手牌右边）');
+  });
+
   await atest('手机版二次点击出牌：第一次选中、第二次才真的打出', async () => {
     const ui = win.KWX_UI;
     const g = ui.getGame();
@@ -890,6 +928,47 @@ function boot(seed) {
     g.submit({ type: 'discard', tile: Number(t.dataset.tile) });
     await p;
     ui.setLayout('desktop');                      // 还原，别影响别的用例
+  });
+
+  await atest('手机版：问亮倒时也要点两次才出牌（原来一点就把牌打出去了）', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    ui.setLayout('portrait');
+    const p0 = g.players[0];
+    p0.hand = H('123456789t 12b 11b 5t');    // 刚摸 5筒，打掉就听 2条/3条
+    p0.melds = [];
+    p0.lastDraw = H('5t')[0];
+    p0.liangdao = false;
+
+    const selfAsk = g.ask({
+      kind: 'self', seat: 0, ctx: {},
+      actions: [{ type: 'liangdao' }, { type: 'pass' }],
+      preview: { allowed: p0.hand.slice(), banned: [], locked: false, forced: false }
+    });
+    const clickable = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'clickable'));
+    assert.ok(clickable.length > 0, '问亮倒时手牌该可点');
+    const t = clickable[clickable.length - 1];
+
+    t.click();                                  // 第一次：只选中，不能把亮倒那一问按掉
+    assert.ok(dom.hasClass(t, 'picked'), '第一次点应只抬起选中');
+    assert.ok(g.pending, '第一次点不该把「要不要亮倒」按掉（原来这里就出牌了）');
+    assert.ok(dom.hasClass(dom.byId['confirm-bar'], 'show'), '应出现顶部确认条');
+
+    t.click();                                  // 第二次：才真的「过」+ 出牌
+    const selfAnswer = await selfAsk;
+    assert.strictEqual(selfAnswer.type, 'pass', '第二次点后才把亮倒按「过」');
+    assert.ok(!dom.hasClass(dom.byId['confirm-bar'], 'show'), '确认条应收起');
+
+    // 接着游戏问出牌 —— 应该把刚才点的那张打出去
+    const discardAsk = g.ask({
+      kind: 'discard', seat: 0, tiles: p0.hand.slice(),
+      allowed: p0.hand.slice(), banned: [], locked: false, forced: false
+    });
+    const ans = await discardAsk;
+    assert.strictEqual(ans.type, 'discard');
+    assert.strictEqual(ans.tile, H('5t')[0], '应该打出刚才点的那张');
+    ui.setLayout('desktop');
   });
 
   /* ------------------------------------------------------------------ */

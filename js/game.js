@@ -194,15 +194,18 @@
   };
 
   /**
-   * 亮倒奖惩记忆：这一局亮倒过的电脑，赢了就上调该牌型的亮倒倾向、没赢就下调。
-   * 下一局面对同一种牌型时，倾向会直接缩放亮倒门槛 —— 赢过的更敢亮，输过的更谨慎。
+   * 亮倒奖惩记忆：这一局亮倒过的电脑，按**当时的情况**复盘 ——
+   * 赢了就上调「这一类情况」的亮倒倾向、没赢就下调，下一局遇到同类情况门槛随之缩放。
+   * 情况维度：番数档 · 听牌宽度 · 牌山与剩余和牌张 · 放铳风险（对手副露/牌河）
    * @param {function(number):boolean} isWinner 座位号 -> 是不是本局赢家
    */
   Game.prototype.learnFromLiangdao = function (isWinner) {
     var self = this;
     this.players.forEach(function (p, i) {
-      if (!p.isAI || !p.liangdao || !p.liangdaoKey) return;   // 只让电脑学（玩家自己决定）
-      AI.noteLiangdaoResult(self.liangdaoLearn[i], p.liangdaoKey, !!(isWinner && isWinner(i)));
+      if (!p.isAI || !p.liangdao) return;                     // 只让电脑学（玩家自己决定）
+      var sit = p.liangdaoSit || p.liangdaoKey;
+      if (!sit) return;
+      AI.noteLiangdaoResult(self.liangdaoLearn[i], sit, !!(isWinner && isWinner(i)), p.liangdaoKey);
     });
   };
 
@@ -298,6 +301,8 @@
       p.liangdaoFresh = false;
       p.liangdaoReveal = null;
       p.liangdaoKey = null;
+      p.liangdaoSit = null;
+      p.liangdaoFeature = null;
       p.passWin = false;
       p.lastDraw = null;
     });
@@ -431,11 +436,13 @@
       if (choice.type === 'liangdao') {
         p.liangdao = true;
         p.liangdaoFresh = true;   // 这一手还可以选留哪张，之后就锁死只能摸打
-        // 记下这次摊的是哪种牌型 —— 结算时按「赢/输」更新该牌型的奖惩倾向
+        // 记下这次摊的是什么牌型 + 当时的情况 —— 结算时按「赢/输」回访这一类情况
         var ldp = AI.liangdaoPlan(this.viewFor(seat));
         p.liangdaoKey = ldp ? ldp.key : null;
-        this.say(seat, '亮倒！番数 ×2，此后只能摸打、不能再改听张' + (ldp ? '（' + ldp.key + '）' : ''), 'liangdao');
-        this.emit('liangdao', { seat: seat });
+        p.liangdaoSit = ldp ? ldp.sitKey : null;      // 按情况分桶的 key（见 ai.js situationKey）
+        p.liangdaoFeature = ldp ? ldp.sitLabel : null; // 给界面看的情况描述
+        this.say(seat, '亮倒！番数 ×2', 'liangdao');
+        this.emit('liangdao', { seat: seat, sit: p.liangdaoFeature });
         continue;
       }
       if (choice.type === 'ankong' || choice.type === 'addkong') {

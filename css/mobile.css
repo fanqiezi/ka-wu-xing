@@ -176,49 +176,81 @@ body.layout-mobile .actionbar .hint { font-size: 9px; }
 
 /* ============================================================
    横屏 844×390：等同电脑版（顶栏四框+按钮 / 上家·中央·下家 / 你 / 右侧记录栏）
+   询问按钮放到自己那一行的右侧（手牌右边），不再占底部一整行
    ============================================================ */
 body.layout-mobile.layout-landscape #app {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 body.layout-mobile.layout-landscape .topbar { grid-column: 1 / -1; }
-body.layout-mobile.layout-landscape .table { grid-column: 1; grid-row: 2; grid-template-rows: minmax(0, 1fr) auto; }
-body.layout-mobile.layout-landscape .opponents { grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr); }
-body.layout-mobile.layout-landscape .sidebar {
-  grid-column: 2; grid-row: 2 / span 2;
-  /* 电脑版在 ≤1080px 的媒体查询里把侧栏隐藏了，横屏手机版要显式恢复 */
-  display: flex; flex-direction: column;
+body.layout-mobile.layout-landscape .table {
+  grid-column: 1; grid-row: 2;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
-body.layout-mobile.layout-landscape .actionbar { grid-column: 1; grid-row: 3; }
-body.layout-mobile.layout-landscape .seat-self { flex: 0 0 auto; }
+body.layout-mobile.layout-landscape .opponents {
+  grid-column: 1 / -1; grid-row: 1;
+  grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr);
+}
+body.layout-mobile.layout-landscape .sidebar {
+  grid-column: 2; grid-row: 2;
+  /* 电脑版在 ≤1080px 的媒体查询里把侧栏隐藏了，横屏手机版要显式恢复 */
+  display: flex; flex-direction: column; min-height: 0;
+}
+body.layout-mobile.layout-landscape .seat-self { grid-column: 1; grid-row: 2; flex: 0 0 auto; }
+body.layout-mobile.layout-landscape .actionbar {
+  grid-column: 2; grid-row: 2; align-self: center;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px; max-width: 170px; padding: 4px;
+}
+body.layout-mobile.layout-landscape .actionbar .act { min-height: 38px; font-size: 13px; padding: 2px; }
+body.layout-mobile.layout-landscape .actionbar .hint,
+body.layout-mobile.layout-landscape .actionbar > div {
+  grid-column: 1 / -1; text-align: center; font-size: 9px; padding: 2px;
+}
 body.layout-mobile.layout-landscape .seat-opp .hand-row { flex-wrap: nowrap; max-height: calc(15px + 2px); }
-body.layout-mobile.layout-landscape .seat-opp .row.discards .discards-list { max-height: calc(27px * 2 + 2px); }
-body.layout-mobile.layout-landscape .seat-self .row.discards .discards-list { max-height: calc(27px * 2 + 2px); }
 body.layout-mobile.layout-landscape .seat-self .row.waits { flex-wrap: nowrap; }
+/* 副露 + 牌河 一起滚：整块限高、超出上下滑动 */
+body.layout-mobile.layout-landscape .seat-scroll {
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  touch-action: pan-y; max-height: 96px;
+}
+body.layout-mobile.layout-landscape .seat-opp .seat-scroll { max-height: none; flex: 1 1 auto; }
 
 /* ============================================================
-   竖屏 390×844：四个方框进中间空当、对局记录收进按钮、手牌两行
+   竖屏 390×844：四个方框进中间空当、操作历史占中间、询问栏单独一排、手牌两行
    ============================================================ */
 body.layout-mobile.layout-portrait #app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 body.layout-mobile.layout-portrait .topbar { grid-row: 1; }
-/* 三段式：对手栏（内容高）— 弹性空档 — 自己（内容高贴底），任何状态都不会互相盖住 */
+/* 四段式：对手栏（内容高）— 操作历史（弹性）— 询问栏（固定高）— 自己（内容高贴底） */
 body.layout-mobile.layout-portrait .table {
   grid-row: 2; display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 body.layout-mobile.layout-portrait .opponents {
   grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); grid-row: 1;
 }
-body.layout-mobile.layout-portrait .seat-self { grid-row: 3; align-self: end; }
-body.layout-mobile.layout-portrait .sidebar { display: none; }   /* 收进顶部「对局记录」按钮 → 悬浮窗 */
-body.layout-mobile.layout-portrait .actionbar { grid-row: 3; justify-self: stretch; }
-body.layout-mobile.layout-portrait .actionbar .act { min-height: 50px; font-size: 15px; }
-body.layout-mobile.layout-portrait .actionbar .hint { display: none; }
+/* 操作历史搬到中间下面的空白处（右侧栏在竖屏不再显示） */
+body.layout-mobile.layout-portrait .sidebar {
+  grid-row: 2; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+}
+body.layout-mobile.layout-portrait .log { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* 询问栏：单独一排、固定高度 —— 按钮/文本出现消失都不会顶动手牌 */
+body.layout-mobile.layout-portrait .actionbar {
+  grid-row: 3; justify-self: stretch; align-self: center;
+  height: 54px; min-height: 54px; overflow: hidden; align-items: center;
+}
+body.layout-mobile.layout-portrait .actionbar .act { min-height: 46px; font-size: 15px; }
+body.layout-mobile.layout-portrait .actionbar .hint,
+body.layout-mobile.layout-portrait .actionbar > div {
+  font-size: 12px; padding: 0 6px; text-align: center; flex: 1 1 auto;
+}
+body.layout-mobile.layout-portrait .seat-self { grid-row: 4; align-self: end; }
 /* 四个方框放到中间上方的空当（2×2） */
 body.layout-mobile.layout-portrait .center-col {
   flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px;
@@ -237,6 +269,12 @@ body.layout-mobile.layout-portrait .seat-self .row.waits { flex-wrap: nowrap; pa
 body.layout-mobile.layout-portrait .seat-self .row.waits > * { white-space: nowrap; }
 body.layout-mobile.layout-portrait .seat-self .hand-row { flex-wrap: wrap; row-gap: 4px; overflow-x: hidden; }
 body.layout-mobile.layout-landscape .seat-self .hand-row { flex-wrap: nowrap; overflow-x: auto; }
+/* 副露 + 牌河 一起滚 */
+body.layout-mobile.layout-portrait .seat-scroll {
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  touch-action: pan-y; max-height: calc(42px * 2 + 3px + 34px);
+}
+body.layout-mobile.layout-portrait .seat-opp .seat-scroll { flex: 1 1 auto; max-height: calc(42px * 5 + 5px + 38px); }
 body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list { height: calc(42px * 5 + 5px); }
 body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: calc(42px * 2 + 2px); }
 
@@ -289,7 +327,24 @@ body.layout-mobile .modal-host .modal {
   padding: 12px 12px calc(12px + var(--safe-b));
 }
 body.layout-mobile .modal-host .modal h2 { font-size: 15px; }
-body.layout-mobile .modal-host .modal-actions { position: sticky; bottom: 0; background: inherit; }
+/* 按钮条：不透明 + 铺满弹窗底部（否则滚动内容会从按钮条下的内边距缝里透出来） */
+body.layout-mobile .modal-host .modal-actions {
+  position: sticky; bottom: 0; z-index: 2;
+  background: #0b241c;
+  margin: 18px -12px calc(-12px - var(--safe-b));
+  padding: 8px 12px calc(8px + var(--safe-b));
+}
 body.layout-mobile .modal-host .modal-actions .btn { flex: 1 1 0; min-height: 44px; }
 body.layout-mobile .modal-host .pay-table { font-size: 10.5px; }
-body.layout-mobile .modal-host .chart-wrap { height: 110px; }
+body.layout-mobile .modal-host .pay-table th,
+body.layout-mobile .modal-host .pay-table td { padding: 3px 4px; }
+/* 宽表：手机版横向可滑，不要挤出弹窗 */
+body.layout-mobile .table-scroll {
+  max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+body.layout-mobile .table-scroll .pay-table { width: auto; min-width: 100%; }
+body.layout-mobile .modal-host .round-desc { max-width: none; white-space: nowrap; }
+/* 折线图：canvas 高度必须跟外框一致，否则会溢出（原来 canvas 240px、外框 110px） */
+body.layout-mobile .chart-wrap { height: auto; padding: 4px; overflow: hidden; }
+body.layout-mobile .chart { height: 130px; }
+body.layout-mobile .chart-legend { font-size: 10px; gap: 6px; margin-top: 4px; }

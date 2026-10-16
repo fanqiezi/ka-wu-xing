@@ -299,22 +299,26 @@
 
   function learnEntry(table, key) {
     if (!table.table[key]) {
-      table.table[key] = { key: key, reveal: 0, win: 0, lose: 0, adj: 1 };
+      table.table[key] = { key: key, reveal: 0, win: 0, lose: 0, adj: 1, types: {} };
     }
     return table.table[key];
   }
 
-  /** 该牌型当前的倾向系数（1 = 中性；>1 更容易亮，<1 更保守） */
+  /** 该情况当前的倾向系数（1 = 中性；>1 更容易亮，<1 更保守） */
   function learnAdj(table, key) {
     if (!table || !key || !table.table[key]) return 1;
     return table.table[key].adj;
   }
 
-  /** 记一次亮倒结果：赢了上调倾向、输了下调（这就是「奖惩机制」） */
-  function noteLiangdaoResult(table, key, won) {
+  /**
+   * 记一次亮倒结果：**按「当时是什么情况」复盘**，不是只按牌型。
+   * 赢了上调这一类情况的倾向、输了下调（有上下限 learnMin ~ learnMax）。
+   */
+  function noteLiangdaoResult(table, key, won, typeKey) {
     if (!table || !key) return null;
     var e = learnEntry(table, key);
     e.reveal++;
+    if (typeKey) e.types[typeKey] = (e.types[typeKey] || 0) + 1;
     if (won) {
       e.win++;
       e.adj = Math.min(LIANGDAO.learnMax, e.adj + LIANGDAO.learnUp);
@@ -325,12 +329,43 @@
     return e;
   }
 
-  /** 记忆表摘要（给界面展示用）：亮倒过的牌型，按次数排序 */
+  /** 这个情况桶里最常见的牌型（给界面看） */
+  function topType(e) {
+    var best = '', n = 0;
+    for (var k in e.types) {
+      if (Object.prototype.hasOwnProperty.call(e.types, k) && e.types[k] > n) { best = k; n = e.types[k]; }
+    }
+    return best;
+  }
+
+  /** 把一次亮倒的「情况」分桶：番数 / 听牌宽度 / 牌山与剩余和牌张 / 放铳风险 */
+  function situationKey(plan) {
+    var fanB = plan.fan >= 4 ? '番多' : '番少';
+    var widthB = (plan.width || 0) >= 3 ? '听宽' : '听窄';
+    var wall = plan.wall === undefined ? 30 : plan.wall;
+    var scarce = wall <= 12 || (plan.remainWin || 0) <= 3;
+    var wallB = scarce ? '牌山少' : '牌山多';
+    var riskB = (plan.threat || 0) >= 1 ? '险高' : '险低';
+    return fanB + '·' + widthB + '·' + wallB + '·' + riskB;
+  }
+
+  /** 情况描述（比 key 更啰嗦，用于日志/调试） */
+  function situationLabel(plan) {
+    return plan.key + '（' + plan.fan + ' 番 · 听 ' + (plan.width || 0) + ' 种' +
+      ' · 剩 ' + (plan.remainWin || 0) + ' 张 · 牌山 ' + (plan.wall === undefined ? '?' : plan.wall) +
+      ' · 风险 ' + ((plan.threat || 0) >= 1 ? '高' : '低') + '）';
+  }
+
+  /** 记忆表摘要（给界面展示用）：亮倒过的情况，按次数排序 */
   function learnSummary(table) {
     if (!table) return [];
     var out = [];
     for (var k in table.table) {
-      if (Object.prototype.hasOwnProperty.call(table.table, k)) out.push(table.table[k]);
+      if (Object.prototype.hasOwnProperty.call(table.table, k)) {
+        var e = table.table[k];
+        e.topType = topType(e);
+        out.push(e);
+      }
     }
     out.sort(function (a, b) { return b.reveal - a.reveal; });
     return out;
@@ -405,6 +440,7 @@
 
       p.turns = turns;
       p.threat = threat;
+      p.wall = wall;
       p.pSelfDraw = qZimo;
       p.pDianPao = qDian;
       p.pDian = pDianAll;
@@ -416,21 +452,26 @@
     });
 
     plans.sort(function (a, b) { return b.score - a.score; });
+    // 给推荐方案打上「情况」标签：奖惩记忆按它复盘（番数/听宽/牌山剩张/风险）
+    plans[0].sitKey = situationKey(plans[0]);
+    plans[0].sitLabel = situationLabel(plans[0]);
     return plans[0];
   }
 
   /**
-   * 亮倒决策：期望值要超过「门槛 ÷ 该牌型的奖惩倾向」才摊牌
-   * （屁胡的牌型无番，门槛还要再乘 pitHuNeedMul）
-   * @returns { plan, need, adj, score, yes }
+   * 亮倒决策：期望值要超过「门槛 ÷ 这类情况的奖惩倾向」才摊牌
+   * 情况 = 番数档 · 听牌宽度 · 牌山与剩余和牌张 · 放铳风险（不是只看牌型）
+   * （屁胡无番，门槛还要再乘 pitHuNeedMul）
+   * @returns { plan, need, adj, sitKey, score, yes }
    */
   function liangdaoDecision(view) {
     var plan = liangdaoPlan(view);
     if (!plan) return null;
-    var adj = learnAdj(view.liangdaoLearn, plan.key);
+    var sitKey = plan.sitKey || plan.key;
+    var adj = learnAdj(view.liangdaoLearn, sitKey);
     var need = LIANGDAO.need / (adj || 1);
     if (plan.fan === 1) need *= LIANGDAO.pitHuNeedMul;
-    return { plan: plan, need: need, adj: adj, score: plan.score, yes: plan.score > need };
+    return { plan: plan, need: need, adj: adj, sitKey: sitKey, score: plan.score, yes: plan.score > need };
   }
 
   /** 是否亮倒 */
@@ -465,6 +506,8 @@
     learnAdj: learnAdj,
     learnSummary: learnSummary,
     noteLiangdaoResult: noteLiangdaoResult,
+    situationKey: situationKey,
+    situationLabel: situationLabel,
     typeKeyOfInfo: typeKeyOfInfo,
     bestTypeInfo: bestTypeInfo,
     opponentThreat: opponentThreat,

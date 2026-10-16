@@ -501,7 +501,7 @@ function playOne(seed, stats) {
       assert.ok(hot.dianLoss > quiet.dianLoss, '放铳损失应该更大');
     });
 
-    await testAsync('亮倒奖惩机制：赢过该牌型更敢亮，输过更保守（含上下限）', async () => {
+    await testAsync('亮倒奖惩记忆按「情况」复盘：这类情况输过更保守、赢过更敢亮（含上下限）', async () => {
       const AIm = require('../js/ai.js');
       const hand = H('1112345678999t 5t');
       const view = {
@@ -510,36 +510,51 @@ function playOne(seed, stats) {
         rules: R.DEFAULT_RULES, liangdaoLearn: AIm.newLearnTable()
       };
       const d0 = AIm.liangdaoDecision(view);
-      assert.ok(d0 && d0.plan.key, '应能算出牌型：' + (d0 && d0.plan.key));
-      const key = d0.plan.key;
+      assert.ok(d0 && d0.sitKey, '应能算出「情况」：' + (d0 && d0.sitKey));
+      const key = d0.sitKey;
+      // 情况 = 番数档 · 听牌宽度 · 牌山与剩余和牌张 · 放铳风险（不是只看牌型）
+      ['番少', '番多', '听宽', '听窄', '牌山多', '牌山少', '险高', '险低'].some(k =>
+        assert.ok(true));
+      assert.ok(/番|听|牌山|险/.test(key), '情况 key 应含各维度，实际 ' + key);
+      assert.ok(d0.plan.sitLabel && d0.plan.sitLabel.indexOf(d0.plan.key) >= 0,
+        '情况描述里应带上牌型：' + d0.plan.sitLabel);
+      assert.ok(d0.plan.key.indexOf('清一色') >= 0, '这手牌含清一色，实际 ' + d0.plan.key);
       assert.strictEqual(AIm.learnAdj(view.liangdaoLearn, key), 1, '一开始是中性');
       assert.strictEqual(d0.need, AIm.LIANGDAO.need, '中性时门槛就是基准值');
 
-      // 输了两次 → 倾向下调、门槛抬高（更保守）
-      AIm.noteLiangdaoResult(view.liangdaoLearn, key, false);
-      AIm.noteLiangdaoResult(view.liangdaoLearn, key, false);
+      // 这类情况输了两次 → 倾向下调、门槛抬高（更保守）
+      AIm.noteLiangdaoResult(view.liangdaoLearn, key, false, d0.plan.key);
+      AIm.noteLiangdaoResult(view.liangdaoLearn, key, false, d0.plan.key);
       const adjLose = AIm.learnAdj(view.liangdaoLearn, key);
       const dLose = AIm.liangdaoDecision(view);
       assert.ok(adjLose < 1, '输过之后倾向应 <1，实际 ' + adjLose);
       assert.ok(dLose.need > d0.need, '输过之后门槛更高（更难亮）');
 
       // 再赢三次 → 倾向回到 >1、门槛低于基准
-      for (let i = 0; i < 3; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, true);
+      for (let i = 0; i < 3; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, true, d0.plan.key);
       const dWin = AIm.liangdaoDecision(view);
       assert.ok(AIm.learnAdj(view.liangdaoLearn, key) > 1, '赢过之后倾向应 >1');
       assert.ok(dWin.need < d0.need, '赢过之后更容易亮');
 
       // 上下限：不会无限放大/缩小
-      for (let i = 0; i < 40; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, false);
+      for (let i = 0; i < 40; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, false, d0.plan.key);
       assert.strictEqual(AIm.learnAdj(view.liangdaoLearn, key), AIm.LIANGDAO.learnMin, '有下限');
-      for (let i = 0; i < 80; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, true);
+      for (let i = 0; i < 80; i++) AIm.noteLiangdaoResult(view.liangdaoLearn, key, true, d0.plan.key);
       assert.strictEqual(AIm.learnAdj(view.liangdaoLearn, key), AIm.LIANGDAO.learnMax, '有上限');
 
-      // 战绩也在累计（赢/输次数、亮倒次数）
+      // 战绩也在累计（赢/输次数、亮倒次数、最常见的牌型）
       const e = AIm.learnSummary(view.liangdaoLearn)[0];
       assert.strictEqual(e.reveal, 125, '亮倒次数应累计，实际 ' + e.reveal);
       assert.strictEqual(e.win + e.lose, e.reveal, '赢+输 = 亮倒次数');
       assert.strictEqual(e.lose, 42, '输了 2 + 40 次');
+      assert.strictEqual(e.topType, d0.plan.key, '这一桶里最常见的牌型应记下来');
+
+      // 换了「情况」就是另一桶：不影响这一桶的倾向
+      const other = AIm.situationKey({
+        key: '屁胡', fan: 1, width: 1, remainWin: 2, wall: 8, threat: 1.5
+      });
+      assert.notStrictEqual(other, key, '不同情况应是不同的桶：' + other + ' vs ' + key);
+      assert.strictEqual(AIm.learnAdj(view.liangdaoLearn, other), 1, '没遇到过的走中性（×1）');
     });
 
     await testAsync('奖惩记忆接到牌局上：亮倒赢了上调、输了（含荒庄）下调', async () => {

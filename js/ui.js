@@ -133,13 +133,8 @@
       cbar.addEventListener('click', function (e) {
         var b = e.target.closest ? e.target.closest('[data-confirm]') : null;
         if (!b) return;
-        var tile = mobilePicked && mobilePicked.dataset ? Number(mobilePicked.dataset.tile) : null;
-        if (b.dataset.confirm === 'go') {
-          clearMobilePick();
-          if (tile !== null && !isNaN(tile)) answer({ type: 'discard', tile: tile });
-        } else {
-          clearMobilePick();
-        }
+        if (b.dataset.confirm === 'go') confirmMobilePick();
+        else clearMobilePick();
       });
     }
 
@@ -295,6 +290,7 @@
   function answer(ans) {
     if (!game || !pendingAsk) return;
     pendingAsk = null;
+    clearMobilePick();
     el.actionbar.innerHTML = '';
     game.submit(ans);
     render();
@@ -307,13 +303,14 @@
    */
   function pickTile(tile, node) {
     if (!pendingAsk) return;
+    // 手机版：一律「先选中、再点一次才打出去」（防误触）。
+    // 注意：问「亮倒/杠」时点手牌 ⇒ 先把那一问按「过」，再把这张排进出牌队列，同样要二次确认。
+    if (isMobileLayout()) { mobilePick(tile, node); return; }
     if (pendingAsk.kind === 'self') {
       queuedDiscard = tile;
       answer({ type: 'pass' });
       return;
     }
-    // 手机版：二次点击出牌（第一次选中、第二次才真打），防误触
-    if (isMobileLayout()) { mobilePick(tile, node); return; }
     answer({ type: 'discard', tile: tile });
   }
 
@@ -322,7 +319,8 @@
   /* ------------------------------------------------------------------ */
 
   var layoutMode = 'desktop';        // 'desktop' | 'portrait' | 'landscape'
-  var mobilePicked = null;           // 手机版二次点击出牌：已经选中的那张
+  var mobilePicked = null;           // 手机版二次点击出牌：已经选中的那个牌元素
+  var mobilePickedTile = null;       // 已经选中的那张牌的编码
 
   function isMobileLayout() { return layoutMode !== 'desktop'; }
 
@@ -342,7 +340,7 @@
     return h >= w ? 'portrait' : 'landscape';
   }
 
-  /** 竖屏：把四个方框搬到中间空当；其它布局搬回顶栏 */
+  /** 竖屏：四个方框搬到中间空当；其它布局搬回顶栏 */
   function placeHud(mode) {
     var hud = $('hud'), centerCol = $('center-col'), topbar = $('topbar'), topbtns = document.querySelector
       ? document.querySelector('.topbtns') : null;
@@ -353,6 +351,30 @@
       }
     } else if (hud.parentNode !== topbar && topbar.insertBefore) {
       topbar.insertBefore(hud, topbtns || null);
+    }
+  }
+
+  /**
+   * 按布局搬动「询问栏」和「操作历史」：
+   *  - 竖屏：两样都塞进牌桌里 —— 操作历史占中间空档、询问栏单独一排放在自己方框上方
+   *    （这样每回合手牌不会因为按钮出现/消失而上下跳）
+   *  - 横屏：询问栏放到自己那一行的右侧（手牌右边），操作历史留在右侧栏
+   *  - 桌面：全回 #app，维持原来的固定操作栏 + 右侧栏
+   */
+  function placeExtras(mode) {
+    var table = $('table'), app = $('app'), bar = $('actionbar');
+    var sidebar = $('sidebar');
+    var own = table && table.appendChild;
+    if (!table || !app || !bar) return;
+    if (mode === 'portrait') {
+      if (own && bar.parentNode !== table) table.appendChild(bar);
+      if (own && sidebar && sidebar.parentNode !== table) table.appendChild(sidebar);
+    } else if (mode === 'landscape') {
+      if (own && bar.parentNode !== table) table.appendChild(bar);
+      if (sidebar && sidebar.parentNode !== app && app.appendChild) app.appendChild(sidebar);
+    } else {
+      if (bar.parentNode !== app && app.appendChild) app.appendChild(bar);
+      if (sidebar && sidebar.parentNode !== app && app.appendChild) app.appendChild(sidebar);
     }
   }
 
@@ -368,6 +390,7 @@
     }
     clearMobilePick();
     placeHud(layoutMode);
+    placeExtras(layoutMode);
     if (game) render();
   }
 
@@ -375,6 +398,7 @@
   function clearMobilePick() {
     if (mobilePicked && mobilePicked.classList) mobilePicked.classList.remove('picked');
     mobilePicked = null;
+    mobilePickedTile = null;
     var bar = $('confirm-bar');
     if (bar && bar.classList) { bar.classList.remove('show'); bar.innerHTML = ''; }
   }
@@ -391,20 +415,17 @@
     showTileInfo._t = setTimeout(function () { box.classList.remove('show'); }, 3200);
   }
 
-  /** 手机版二次点击出牌：第一次点=选中（抬起+确认条），第二次点=打出 */
+  /** 手机版二次点击出牌：第一次点=选中（抬起+确认条），第二次点=按当前问的类型提交 */
   function mobilePick(tile, node) {
-    if (mobilePicked && node && mobilePicked === node) {
-      clearMobilePick();
-      answer({ type: 'discard', tile: tile });
-      return;
-    }
+    if (mobilePicked && node && mobilePicked === node) { confirmMobilePick(tile); return; }
     clearMobilePick();
     if (node) {
       node.classList.add('picked');
       mobilePicked = node;
+      mobilePickedTile = tile;
     }
     var bar = $('confirm-bar');
-    if (!bar) { answer({ type: 'discard', tile: tile }); return; }
+    if (!bar) { confirmMobilePick(tile); return; }
     bar.innerHTML = '';
     var txt = document.createElement('span');
     txt.textContent = '已选 ' + T.nameOf(tile) + '（' + (node && node.title ? node.title : '再点一次打出') + '）';
@@ -422,6 +443,23 @@
     bar.appendChild(go);
     bar.appendChild(no);
     bar.classList.add('show');
+  }
+
+  /**
+   * 确认打出这张：当前在问什么就按什么提交。
+   * 问「亮倒/杠」（kind=self）时不能直接出牌，要先把那一问按「过」，再把这张排进出牌队列。
+   */
+  function confirmMobilePick(tile) {
+    var t = tile !== undefined && tile !== null ? tile : mobilePickedTile;
+    var kind = pendingAsk ? pendingAsk.kind : null;
+    clearMobilePick();
+    if (t === null || t === undefined || !pendingAsk) return;
+    if (kind === 'self') {
+      queuedDiscard = t;
+      answer({ type: 'pass' });
+      return;
+    }
+    answer({ type: 'discard', tile: t });
   }
 
   /* ------------------------------------------------------------------ */
@@ -639,12 +677,15 @@
       chip.appendChild(cnt);
       row.appendChild(chip);
     });
-    var note = document.createElement('span');
-    note.className = 'wait-note' + (info.isPitHu ? ' danger' : ' good');
-    note.textContent = info.isPitHu
-      ? '共 ' + info.total + ' 张 · 屁胡只能自摸'
-      : '共 ' + info.total + ' 张 · ' + info.fan + ' 倍牌型（可捉炮）';
-    row.appendChild(note);
+    // 对手亮倒的听牌只公开「听什么」；不暴露番数、也不提「能不能捉炮」
+    if (!opt.hideNote) {
+      var note = document.createElement('span');
+      note.className = 'wait-note' + (info.isPitHu ? ' danger' : ' good');
+      note.textContent = info.isPitHu
+        ? '共 ' + info.total + ' 张 · 屁胡只能自摸'
+        : '共 ' + info.total + ' 张 · ' + info.fan + ' 倍牌型（可捉炮）';
+      row.appendChild(note);
+    }
     if (opt.locked) {
       var lock = document.createElement('span');
       lock.className = 'wait-note locked';
@@ -669,7 +710,13 @@
     // 手牌
     var handRow = document.createElement('div');
     handRow.className = 'hand-row';
+    // 亮倒的对手：亮出的那几张单独一行展示，手牌行一律盖着（先算这个，下面的手牌要按它减张数）
+    var showRevealRow = !isSelf && !!p.liangdao && !!state.playing && !!p.reveal;
     var hand = p.hand.slice().sort(function (a, b) { return a - b; });
+    // 亮出来的牌已经摆在「亮倒」行，手牌行相应少几张（亮了几张就减几张）
+    if (showRevealRow && p.reveal.length) {
+      hand = hand.slice(0, Math.max(0, hand.length - p.reveal.length));
+    }
     var drawn = null;
     var isWinTile = false;
     // 摸完牌之后（无论是「该你出牌」还是「问你要不要杠/亮倒」）都把刚摸的牌单独拎出来，
@@ -694,8 +741,6 @@
     var banned = askingDiscard ? pendingAsk.banned : (preview ? preview.banned : null);
     var canPick = (askingDiscard || (askingSelf && preview)) && allowed;
     var reveal = isSelf || p.liangdao || !state.playing;
-    // 亮倒的对手：亮出的那几张单独拿一行展示，手牌行一律盖着
-    var showRevealRow = !isSelf && p.liangdao && state.playing && !!p.reveal;
     // 自己出牌时给出「打这张会听什么」的角标
     var hints = (isSelf && (askingDiscard || askingSelf)) ? playerWaitHints() : null;
 
@@ -766,14 +811,18 @@
       discList.appendChild(makeTile(t, size, { cls: newest ? 'newest' : '' }));
     });
     discRow.appendChild(discList);
+    // 副露 + 牌河 包一层：手机版靠它「一起上下滑动」（限高、超出可滚）
+    var scrollBox = document.createElement('div');
+    scrollBox.className = 'seat-scroll';
+    scrollBox.appendChild(meldRow);
+    scrollBox.appendChild(discRow);
 
     if (isSelf) {
       // 听牌提示放在手牌正上方；摸完牌后直接显示「打哪张听什么」
       var selfHints = playerWaitHints();
       var acting = isAsking(0, 'discard') || isAsking(0, 'self');
       var showBest = acting && selfHints.best;
-      container.appendChild(meldRow);
-      container.appendChild(discRow);
+      container.appendChild(scrollBox);
       container.appendChild(makeWaitRow(showBest ? selfHints.best : selfHints.current, {
         label: showBest ? ('打 ' + T.shortOf(selfHints.bestTile) + ' 后听') : '听牌',
         emptyText: acting
@@ -797,13 +846,12 @@
         });
         container.appendChild(revRow);
       }
-      // 亮倒的对手手牌已经公开，顺便把他的听牌也标出来
+      // 亮倒的对手手牌已经公开，顺便把他的听牌也标出来（只说听什么，不说番数）
       if (p.liangdao && p.hand.length % 3 === 1) {
         var info = waitInfoOf(p.hand, p.melds, remainFor(seat), state.rules);
-        if (info) container.appendChild(makeWaitRow(info, { label: '听牌' }));
+        if (info) container.appendChild(makeWaitRow(info, { label: '听牌', hideNote: true }));
       }
-      container.appendChild(meldRow);
-      container.appendChild(discRow);
+      container.appendChild(scrollBox);
     }
   }
 
@@ -847,7 +895,7 @@
       if (pendingAsk) {
         if (pendingAsk.kind === 'discard') text = '轮到你出牌';
         else if (pendingAsk.kind === 'self') text = '你可以操作';
-        else if (pendingAsk.kind === 'claim') text = '可以吃碰杠胡（卡五星不能吃）';
+        else if (pendingAsk.kind === 'claim') text = '你可以操作';
       } else {
         var seat = state.nextSeat;
         text = seat >= 0 ? state.players[seat].name + ' 行动中…' : '进行中…';
@@ -896,13 +944,6 @@
           el.actionbar.appendChild(actBtn('过', 'pass', function () { answer({ type: 'pass' }); }));
         }
       });
-      // 提示：不想亮倒/杠的话，直接点手牌就能出牌，不用先点「过」
-      if (pendingAsk.preview) {
-        var tip = document.createElement('div');
-        tip.style.cssText = 'font-size:12px;color:#a8c2b6;padding:8px 6px;';
-        tip.textContent = '（不想亮倒？直接点手牌就能出牌）';
-        el.actionbar.appendChild(tip);
-      }
       return;
     }
 
@@ -1134,7 +1175,8 @@
       (g.rules.baseScore) + ' · 封顶 ' + (g.rules.cap > 0 ? '×' + g.rules.cap : '不封顶') + '</p>';
 
     // 汇总
-    html += '<h3>战绩汇总</h3><table class="pay-table"><tr>' +
+    // 宽表在手机上横向可滑（不然会和折线图一样挤出弹窗）
+    html += '<h3>战绩汇总</h3><div class="table-scroll"><table class="pay-table"><tr>' +
       '<th>玩家</th><th>局数</th><th>胡牌</th><th>自摸</th><th>捉炮</th><th>放铳</th>' +
       '<th>荒庄</th><th>胜率</th><th style="text-align:right">总分</th></tr>';
     stats.forEach(function (s) {
@@ -1151,9 +1193,7 @@
         '<td class="num ' + (s.score >= 0 ? 'pos' : 'neg') + '"><b>' + signed(s.score) + '</b></td>' +
         '</tr>';
     });
-    html += '</table>';
-
-    // 折线图
+    html += '</table></div>';
     html += '<h3>分数走势</h3>';
     html += '<div class="chart-wrap"><canvas id="history-chart" class="chart"></canvas></div>';
     html += '<div class="chart-legend">';
@@ -1164,7 +1204,7 @@
     html += '<span class="legend-item muted">（横轴=局数，纵轴=累计分数）</span></div>';
 
     // 每局明细
-    html += '<h3>每局明细</h3><table class="pay-table"><tr><th>局</th><th>庄家</th><th>结果</th>';
+    html += '<h3>每局明细</h3><div class="table-scroll"><table class="pay-table"><tr><th>局</th><th>庄家</th><th>结果</th>';
     players.forEach(function (p) { html += '<th style="text-align:right">' + p.name + '</th>'; });
     html += '</tr>';
     history.slice().reverse().forEach(function (h) {
@@ -1176,9 +1216,9 @@
       });
       html += '</tr>';
     });
-    html += '</table>';
+    html += '</table></div>';
 
-    // 电脑的亮倒奖惩记忆（按牌型）
+    // 电脑的亮倒奖惩记忆（按「当时是什么情况」复盘，不只看牌型）
     var learnRows = [];
     players.forEach(function (p) {
       if (!p.isAI || !g.liangdaoLearn) return;
@@ -1188,20 +1228,22 @@
     });
     if (learnRows.length) {
       html += '<h3>电脑的亮倒奖惩记忆</h3>' +
-        '<p class="muted">电脑每亮倒一次就按「赢了/输了」调整该牌型的倾向：' +
-        '赢过 → 门槛降低（更敢亮），输过 → 门槛抬高（更保守）。' +
+        '<p class="muted">电脑亮倒时会记下<b>当时的情况</b>（番数档 · 听牌宽度 · 牌山与剩余和牌张 · 放铳风险），' +
+        '之后按结果复盘：<b>这类情况赢了就上调倾向（更敢亮），输了就下调（更保守）</b>，' +
+        '倾向直接缩放亮倒门槛（下限 ×' + AI.LIANGDAO.learnMin + '、上限 ×' + AI.LIANGDAO.learnMax + '）。' +
         '记忆在这次对局内累计，点「新对局」会清空。</p>';
-      html += '<table class="pay-table"><tr><th>玩家</th><th>牌型</th><th>亮倒</th>' +
-        '<th>赢</th><th>输</th><th style="text-align:right">倾向</th></tr>';
+      html += '<div class="table-scroll"><table class="pay-table"><tr><th>玩家</th><th>情况（番数·听宽·牌山·风险）</th>' +
+        '<th>亮倒</th><th>赢</th><th>输</th><th style="text-align:right">倾向</th></tr>';
       learnRows.sort(function (a, b) { return b.e.reveal - a.e.reveal; });
       learnRows.slice(0, 12).forEach(function (r) {
         var adj = r.e.adj;
         var cls = adj > 1.02 ? 'pos' : (adj < 0.98 ? 'neg' : '');
-        html += '<tr><td>' + r.name + '</td><td>' + r.e.key + '</td>' +
+        html += '<tr><td>' + r.name + '</td><td>' + r.e.key +
+          (r.e.topType ? ' <span class="muted">（' + r.e.topType + '）</span>' : '') + '</td>' +
           '<td>' + r.e.reveal + '</td><td>' + r.e.win + '</td><td>' + r.e.lose + '</td>' +
           '<td class="num ' + cls + '">×' + adj.toFixed(2) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
     }
 
     var box = openModal(html, [
@@ -1293,7 +1335,7 @@
       '反过来，未听牌的人<b>不必再赔给亮倒者</b>。</li>',
       '<li>所以番数低的牌（尤其是屁胡 ×1）翻倍也多赚不了多少，却要承担一样的风险 —— ' +
       '电脑是按期望值算分决定亮不亮倒的，会同时看<b>剩余抽牌数、听张宽度、剩余和牌张数、放铳风险</b>，' +
-      '<b>屁胡基本不亮</b>，而且每种牌型还会按「亮倒赢过/输过」自己调整倾向（对局记录里能看到）。</li>',
+      '<b>屁胡基本不亮</b>，而且电脑会按「亮倒当时的情况」复盘：这类情况赢过更敢亮、输过更保守（对局记录里能看到）。</li>',
       '<li>亮倒可以在自己摸完牌之后宣布，也可以在碰 / 杠 / 加杠之后刚听牌时宣布。</li>',
       '</ul>',
       '<h3>什么时候会问你要不要亮倒</h3><ul>',
