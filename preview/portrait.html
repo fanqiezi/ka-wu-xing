@@ -11,54 +11,62 @@
 
 <div class="hint">
   <b>竖屏样张 390×844</b>（假数据，不接逻辑）<br>
-  点手牌 → 抬起 + 顶部确认条；长按 → 看「打这张听什么」；<br>
-  右下角「样张设置」可切状态 / 手牌大小 / 牌河行数。
+  顶部一行（不换行）· 上家 | <b>四个方框 + 中央信息</b> | 下家 · 你在下方 ·<br>
+  <b>对局记录收进顶部按钮</b>，点一下用悬浮窗看。右边缘竖条「样张设置」可切状态 / 手牌大小 / 牌河。
 </div>
 
 <div class="frame">
   <div class="phone">
-
-    <!-- 顶部确认条（点选后出现） -->
     <div class="confirm-bar" id="confirmBar"></div>
 
-    <!-- ① 顶栏：局数/底金/记录/设置 -->
-    <div class="m-top" data-fill="top"></div>
+    <div id="app">
+      <!-- 顶栏：只留一行（品牌 + 按钮），四个方框挪到中间空当 -->
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">中</span>
+          <div><h1>卡五星麻将</h1><p class="sub">湖北三人麻将 · 单机版</p></div>
+        </div>
+        <div class="topbtns">
+          <button class="btn ghost" data-sheet="history">对局记录</button>
+          <button class="btn ghost" data-sheet="settings">规则</button>
+          <button class="btn ghost" data-sheet="settings">设置</button>
+          <button class="btn ghost" data-act="menu">菜单</button>
+        </div>
+      </header>
 
-    <!-- ② 上家（含牌背、副露、亮倒行、听牌） -->
-    <div class="m-opp" data-opp="top"></div>
+      <main class="table" id="table">
+        <div class="opponents">
+          <section class="seat seat-opp" data-opp="top"></section>
 
-    <!-- ③ 中间：两家牌河 + 中央信息（高度不够时自动压缩） -->
-    <div class="m-middle">
-      <div class="m-river" data-river="top">
-        <span class="m-river-head">上家<br>牌河</span>
-        <div class="m-river-tiles"></div>
-      </div>
-      <div class="m-center" id="mCenter"></div>
-      <div class="m-river" data-river="bottom">
-        <span class="m-river-head">下家<br>牌河</span>
-        <div class="m-river-tiles"></div>
-      </div>
+          <!-- 中间空当：四个方框（局数/底金/剩余牌/庄家）+ 中央信息 -->
+          <div class="center-col">
+            <div class="hud">
+              <div class="hud-item"><label>局数</label><b id="hud-round">12</b></div>
+              <div class="hud-item"><label>底金</label><b id="hud-base">5</b></div>
+              <div class="hud-item"><label>剩余牌</label><b id="hud-wall">42</b></div>
+              <div class="hud-item"><label>庄家</label><b id="hud-dealer">你</b></div>
+            </div>
+            <div class="center-info">
+              <div class="turn-indicator" id="turnIndicator">轮到你出牌</div>
+              <div class="center-tiles" id="centerTiles"></div>
+              <div class="center-meta" id="centerMeta"></div>
+            </div>
+          </div>
+
+          <section class="seat seat-opp" data-opp="bottom"></section>
+        </div>
+        <section class="seat seat-self" data-opp="self"></section>
+      </main>
+
+      <!-- 竖屏不显示右侧记录栏（收进顶部「对局记录」按钮 → 悬浮窗） -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head"><span>对局记录</span></div>
+        <div class="log" id="log"></div>
+      </aside>
+
+      <div class="actionbar" id="actionbar"></div>
     </div>
 
-    <!-- ④ 下家 -->
-    <div class="m-opp" data-opp="bottom"></div>
-
-    <!-- ⑤ 自己已打出的牌 -->
-    <div class="m-river self" data-river="self">
-      <span class="m-river-head">你已<br>打出</span>
-      <div class="m-river-tiles"></div>
-    </div>
-
-    <!-- ⑥ 听牌提示 + 手牌 -->
-    <div class="m-self">
-      <div class="m-waits" id="mWaits"></div>
-      <div class="m-hand compact" id="mHand"></div>
-    </div>
-
-    <!-- ⑦ 操作按钮（≥46px 高，拇指可达） -->
-    <div class="m-actions" id="mActions"></div>
-
-    <!-- 样张演示控制台 -->
     <div class="demo">
       <button class="demo-toggle">样张设置</button>
       <div class="demo-body">

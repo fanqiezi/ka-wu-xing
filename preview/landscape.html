@@ -11,52 +11,62 @@
 
 <div class="hint">
   <b>横屏样张 844×390</b>（假数据，不接逻辑）<br>
-  左右两列是两家对手（牌背 + 副露 + 亮倒行 + 牌河），中间是你的牌河与中央信息；<br>
-  底部：听牌提示 + 手牌（横屏能放大牌）+ 右侧竖排按钮。
+  布局等同电脑版：顶栏（四个方框 + 按钮）· 上家 | 中央 | 下家 · 你在下方 · 右侧对局记录。<br>
+  右边缘竖条「样张设置」可切状态 / 手牌大小 / 牌河。
 </div>
 
 <div class="frame">
   <div class="phone">
-
     <div class="confirm-bar" id="confirmBar"></div>
 
-    <!-- ① 顶栏 -->
-    <div class="m-top" data-fill="top"></div>
-
-    <!-- ② 三列：上家 | 中央 | 下家 -->
-    <div class="m-cols">
-      <div class="m-col-side">
-        <div class="m-opp" data-opp="top"></div>
-        <div class="m-river" data-river="top">
-          <span class="m-river-head">上家<br>牌河</span>
-          <div class="m-river-tiles"></div>
+    <div id="app">
+      <!-- 顶栏：品牌 + 四个方框 + 按钮（与电脑版一致） -->
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">中</span>
+          <div><h1>卡五星麻将</h1><p class="sub">湖北三人麻将 · 单机版</p></div>
         </div>
-      </div>
-
-      <div class="m-col-mid">
-        <div class="m-center" id="mCenter"></div>
-        <div class="m-river self" data-river="self">
-          <span class="m-river-head">你已<br>打出</span>
-          <div class="m-river-tiles"></div>
+        <div class="hud">
+          <div class="hud-item"><label>局数</label><b id="hud-round">12</b></div>
+          <div class="hud-item"><label>底金</label><b id="hud-base">5</b></div>
+          <div class="hud-item"><label>剩余牌</label><b id="hud-wall">42</b></div>
+          <div class="hud-item"><label>庄家</label><b id="hud-dealer">你</b></div>
         </div>
-      </div>
-
-      <div class="m-col-side">
-        <div class="m-opp" data-opp="bottom"></div>
-        <div class="m-river" data-river="bottom">
-          <span class="m-river-head">下家<br>牌河</span>
-          <div class="m-river-tiles"></div>
+        <div class="topbtns">
+          <button class="btn ghost" data-sheet="history">对局记录</button>
+          <button class="btn ghost" data-sheet="settings">规则</button>
+          <button class="btn ghost" data-sheet="settings">设置</button>
+          <button class="btn ghost" data-act="menu">返回菜单</button>
+          <button class="btn primary" data-act="newmatch">新对局</button>
         </div>
-      </div>
-    </div>
+      </header>
 
-    <!-- ③ 底部：听牌提示 + 手牌 + 按钮 -->
-    <div class="m-bottom">
-      <div class="m-left">
-        <div class="m-waits" id="mWaits"></div>
-        <div class="m-hand compact" id="mHand"></div>
-      </div>
-      <div class="m-actions" id="mActions"></div>
+      <!-- 牌桌：上家 | 中央 | 下家，然后是你 -->
+      <main class="table" id="table">
+        <div class="opponents">
+          <section class="seat seat-opp" data-opp="top"></section>
+          <div class="center-col">
+            <div class="center-info">
+              <div class="turn-indicator" id="turnIndicator">轮到你出牌</div>
+              <div class="center-tiles" id="centerTiles"></div>
+              <div class="center-meta" id="centerMeta"></div>
+            </div>
+          </div>
+          <section class="seat seat-opp" data-opp="bottom"></section>
+        </div>
+        <section class="seat seat-self" data-opp="self"></section>
+      </main>
+
+      <!-- 右侧对局记录（横屏保留，和电脑版一致） -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <span>对局记录</span>
+          <button class="btn tiny ghost" data-act="clearlog">清空</button>
+        </div>
+        <div class="log" id="log"></div>
+      </aside>
+
+      <div class="actionbar" id="actionbar"></div>
     </div>
 
     <div class="demo">
