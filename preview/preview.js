@@ -88,6 +88,14 @@
 
   /* ---------- 展示状态（只影响样张） ---------- */
   var view = { state: 'normal', handSize: 'compact', river: 'full' };
+  // 支持用链接参数直接看某个状态，方便截图核对：?state=danger&hand=big&river=short
+  var qs = location.search || '';
+  var qm = /[?&]state=(normal|danger|selfLd)/.exec(qs);
+  if (qm) view.state = qm[1];
+  var qh = /[?&]hand=(compact|standard|big|twoRows)/.exec(qs);
+  if (qh) view.handSize = qh[1];
+  var qr = /[?&]river=(full|short)/.exec(qs);
+  if (qr) view.river = qr[1];
   var picked = null;
   var DANGER = [TIAO(3), TIAO(6), TIAO(9)];
 
@@ -131,22 +139,20 @@
     // 对手：先手牌（牌背），再亮倒行/听牌，最后副露与牌河（跟 ui.js 的顺序一致）
     if (!isSelf) {
       var handRow = el('div', 'hand-row');
-      var n = view.state === 'danger' && key === 'top' ? p.backs - 5 : p.backs;
       for (var i = 0; i < p.backs; i++) handRow.appendChild(back());
       host.appendChild(handRow);
 
       if (p.liangdao && isTopLiangdao() && p.reveal) {
+        // 亮倒只亮关联牌；听牌用一行小字（手机上面板很窄，放不下 chip）
         var rr = row('亮倒', 'reveal-row');
         p.reveal.forEach(function (t) { rr.appendChild(tile(t, { cls: 'rev' })); });
-        var ws = el('div', 'waits');
-        p.waits.forEach(function (w) {
-          var c = el('span', 'wait-chip');
-          c.appendChild(document.createTextNode(T.nameOf(w.t)));
-          c.appendChild(el('span', 'cnt', '×' + w.n));
-          ws.appendChild(c);
-        });
-        rr.appendChild(ws);
         host.appendChild(rr);
+        var wt = el('div', 'row waits opp-waits');
+        wt.appendChild(el('span', 'row-label', '听'));
+        wt.appendChild(el('span', 'waits-text', p.waits.map(function (w) {
+          return T.nameOf(w.t) + '×' + w.n;
+        }).join('、')));
+        host.appendChild(wt);
       }
       if (p.melds && p.melds.length) {
         var mr = row('副露', 'melds');

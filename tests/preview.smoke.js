@@ -169,7 +169,8 @@ async function check(name, file) {
     const top = $('[data-opp="top"]');
     assert(/已亮倒/.test(top.textContent), '上家应显示已亮倒');
     eq(top.querySelectorAll('.row.reveal-row .tile').length, 5, '亮出的应是 5 张');
-    eq(top.querySelectorAll('.row.reveal-row .wait-chip').length, 3, '公开听牌应是 3 种');
+    const waits = top.querySelector('.opp-waits .waits-text').textContent.replace(/\s+/g, '');
+    ['三条×3', '六条×1', '九条×2'].forEach(w => assert(waits.indexOf(w) >= 0, '公开听牌缺 ' + w + '：' + waits));
     eq(top.querySelectorAll('.row.reveal-row .tile')[0].dataset.tile, '12', '第一张应是 4条');
     eq(count('#mHand .tile.dangerous'), 3, '手里应有 3 张铳牌');
     assert($('#mHand .tile.dangerous').dataset.guard === '1', '铳牌应标记 guard');
