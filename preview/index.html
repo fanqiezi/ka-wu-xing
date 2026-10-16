@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>卡五星 · 手机版样张</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  body.entry {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    min-height: 100dvh; text-align: center;
+  }
+  body.entry h1 { font-size: 19px; margin: 0; letter-spacing: 1px; }
+  body.entry p { font-size: 12px; color: var(--text-dim); margin: 0; line-height: 1.7; max-width: 460px; }
+  body.entry a.card {
+    display: block; width: 100%; max-width: 340px; text-decoration: none;
+    background: var(--panel); border: 1px solid var(--panel-line); border-radius: 14px;
+    padding: 14px 16px; color: var(--text); text-align: left;
+  }
+  body.entry a.card b { color: var(--gold); font-size: 15px; letter-spacing: 1px; }
+  body.entry a.card span { display: block; font-size: 11.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.6; }
+  body.entry .tip { font-size: 11px; color: var(--text-dim); border-top: 1px dashed rgba(255,255,255,.12); padding-top: 10px; max-width: 460px; }
+</style>
+</head>
+<body class="entry">
+  <h1>卡五星 · 手机版样张</h1>
+  <p>两张样张都是<b>假数据、不接游戏逻辑</b>，但用的是真实牌面（同一套 SVG），所以牌就是最终效果。
+     手机上直接点开看；电脑上会自动等比缩放居中。</p>
+
+  <a class="card" href="portrait.html">
+    <b>竖屏样张 · 390×844</b>
+    <span>三段式：两家对手（牌背/副露/亮倒行）→ 中央牌河+信息 → 你的听牌条+手牌+大按钮。<br>
+      重点看：手牌够不够大、信息够不够、拇指好不好按。</span>
+  </a>
+
+  <a class="card" href="landscape.html">
+    <b>横屏样张 · 844×390</b>
+    <span>三列：上家 | 中央（你的牌河 + 剩余张数）| 下家；底部手牌可以放得更大，按钮竖排在右侧。<br>
+      重点看：横屏能不能一眼看清三家、手牌多大合适。</span>
+  </a>
+
+  <div class="tip">
+    两张样张里都可以：<b>点手牌</b>（抬起 + 顶部确认条，防误触）· <b>长按手牌</b>（看「打这张听什么」）·
+    <b>点「亮倒」</b>（风险确认抽屉）· <b>点「胡」</b>（结算抽屉）· 顶部「记录 / 设置」·
+    右下角「样张设置」切换 <b>状态（正常 / 上家亮倒 / 我亮倒）· 手牌大小（紧凑 / 标准 / 大字）· 牌河行数</b>。
+  </div>
+</body>
+</html>

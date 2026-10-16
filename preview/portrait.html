@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>卡五星 · 手机版样张（竖屏 390×844）</title>
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="preview.css">
+</head>
+<body class="preview portrait">
+
+<div class="hint">
+  <b>竖屏样张 390×844</b>（假数据，不接逻辑）<br>
+  点手牌 → 抬起 + 顶部确认条；长按 → 看「打这张听什么」；<br>
+  右下角「样张设置」可切状态 / 手牌大小 / 牌河行数。
+</div>
+
+<div class="frame">
+  <div class="phone">
+
+    <!-- 顶部确认条（点选后出现） -->
+    <div class="confirm-bar" id="confirmBar"></div>
+
+    <!-- ① 顶栏：局数/底金/记录/设置 -->
+    <div class="m-top" data-fill="top"></div>
+
+    <!-- ② 上家（含牌背、副露、亮倒行、听牌） -->
+    <div class="m-opp" data-opp="top"></div>
+
+    <!-- ③ 中间：两家牌河 + 中央信息（高度不够时自动压缩） -->
+    <div class="m-middle">
+      <div class="m-river" data-river="top">
+        <span class="m-river-head">上家<br>牌河</span>
+        <div class="m-river-tiles"></div>
+      </div>
+      <div class="m-center" id="mCenter"></div>
+      <div class="m-river" data-river="bottom">
+        <span class="m-river-head">下家<br>牌河</span>
+        <div class="m-river-tiles"></div>
+      </div>
+    </div>
+
+    <!-- ④ 下家 -->
+    <div class="m-opp" data-opp="bottom"></div>
+
+    <!-- ⑤ 自己已打出的牌 -->
+    <div class="m-river self" data-river="self">
+      <span class="m-river-head">你已<br>打出</span>
+      <div class="m-river-tiles"></div>
+    </div>
+
+    <!-- ⑥ 听牌提示 + 手牌 -->
+    <div class="m-self">
+      <div class="m-waits" id="mWaits"></div>
+      <div class="m-hand compact" id="mHand"></div>
+    </div>
+
+    <!-- ⑦ 操作按钮（≥46px 高，拇指可达） -->
+    <div class="m-actions" id="mActions"></div>
+
+    <!-- 样张演示控制台 -->
+    <div class="demo">
+      <button class="demo-toggle">样张设置</button>
+      <div class="demo-body">
+        <div class="demo-row"><span class="lab">状态</span>
+          <button data-view="state:normal">正常</button>
+          <button data-view="state:danger">上家亮倒</button>
+          <button data-view="state:selfLd">我亮倒</button>
+        </div>
+        <div class="demo-row"><span class="lab">手牌</span>
+          <button data-view="handSize:compact">紧凑</button>
+          <button data-view="handSize:standard">标准</button>
+          <button data-view="handSize:big">大字</button>
+          <button data-view="handSize:twoRows">两行</button>
+        </div>
+        <div class="demo-row"><span class="lab">牌河</span>
+          <button data-view="river:full">完整</button>
+          <button data-view="river:short">精简</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="infobar" id="infoBar"></div>
+    <div class="toast" id="toast"></div>
+    <div class="sheet-mask" id="sheetMask"></div>
+    <div class="sheet" id="sheet"></div>
+  </div>
+</div>
+
+<script src="../js/tiles.js"></script>
+<script src="preview.js"></script>
+<script>PREVIEW.render();</script>
+</body>
+</html>
