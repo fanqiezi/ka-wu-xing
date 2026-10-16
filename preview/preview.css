@@ -65,12 +65,12 @@ body.landscape {
   --xs-w: 15px;    --xs-h: 21px;
 }
 body.portrait {
-  --back-w: 11px;  --back-h: 15px;
-  --river-w: 20px; --river-h: 28px;
-  --meld-w: 20px;  --meld-h: 28px;
-  --hand-w: 25px;  --hand-h: 36px;   /* 竖屏 390 宽：14 张要一行放得下，只能这么小 */
-  --rev-w: 17px;   --rev-h: 24px;
-  --xs-w: 16px;    --xs-h: 22px;
+  --back-w: 13px;  --back-h: 18px;
+  --river-w: 30px; --river-h: 42px;   /* 竖屏空间够，牌河放大，面板就不显空 */
+  --meld-w: 30px;  --meld-h: 42px;
+  --hand-w: 50px;  --hand-h: 70px;    /* 竖屏默认两行：7 + 7，一张 50x70，非常清楚 */
+  --rev-w: 26px;   --rev-h: 36px;
+  --xs-w: 20px;    --xs-h: 28px;
 }
 .tile.bk   { width: var(--back-w);  height: var(--back-h);  border-radius: 3px; }
 .tile.rv   { width: var(--river-w); height: var(--river-h); border-radius: 4px; }
@@ -80,11 +80,12 @@ body.portrait {
 .tile.xs2  { width: var(--xs-w);    height: var(--xs-h);    border-radius: 3px; }
 
 /* 手牌四档（样张设置里切换）——只覆盖手牌那一行
-   竖屏宽度只有 390，14 张一行本来就很紧：紧凑刚好放得下，标准/大字要横向滑动，两行不用滑 */
-body.portrait .hand-row.compact  { --hand-w: 25px; --hand-h: 36px; }
-body.portrait .hand-row.standard { --hand-w: 28px; --hand-h: 40px; }
-body.portrait .hand-row.big      { --hand-w: 34px; --hand-h: 48px; }
-body.portrait .hand-row.two-rows { --hand-w: 34px; --hand-h: 48px; flex-wrap: wrap; overflow-x: hidden; row-gap: 3px; }
+   竖屏默认「两行」：14 张分 7+7，一张 50x70（比挤在一行大一倍）
+   单行的档位在竖屏一定会横向滑动，留作对比 */
+body.portrait .hand-row.compact  { --hand-w: 24px; --hand-h: 34px; }
+body.portrait .hand-row.standard { --hand-w: 29px; --hand-h: 41px; }
+body.portrait .hand-row.big      { --hand-w: 38px; --hand-h: 53px; }
+body.portrait .hand-row.two-rows { --hand-w: 50px; --hand-h: 70px; flex-wrap: wrap; overflow-x: hidden; row-gap: 4px; }
 body.landscape .hand-row.compact  { --hand-w: 32px; --hand-h: 46px; }
 body.landscape .hand-row.standard { --hand-w: 36px; --hand-h: 52px; }
 body.landscape .hand-row.big      { --hand-w: 40px; --hand-h: 57px; }
@@ -196,7 +197,7 @@ body.landscape .seat-self .row.waits { flex-wrap: nowrap; }
 body.landscape .center-info { width: 100%; }
 
 /* ============================================================
-   竖屏 390×844：四个方框进中间空当、对局记录收进按钮
+   竖屏 390×844：四个方框进中间空当、对局记录收进按钮、手牌两行
    ============================================================ */
 body.portrait #app {
   display: grid;
@@ -204,8 +205,11 @@ body.portrait #app {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 body.portrait .sidebar { display: none; }             /* 折叠进顶部「对局记录」按钮 → 悬浮窗 */
-body.portrait .table { grid-template-rows: minmax(0, 1fr) auto; }
-body.portrait .opponents { grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); align-items: stretch; }
+/* 上面两块紧贴顶部（面板按内容高度，不再被拉成一整屏空白），自己那块贴底 */
+body.portrait .table { grid-template-rows: auto minmax(0, 1fr); }
+/* 面板紧凑：靠「牌河最多几行」来定高（对手 5 行 = 210px），不把整屏撑满 */
+body.portrait .opponents { grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); }
+body.portrait .seat-self { align-self: end; }
 /* 四个方框和中央信息要上下排（之前漏了 flex-direction，两者被挤成一行重叠） */
 body.portrait .center-col {
   flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px;
@@ -214,15 +218,21 @@ body.portrait .center-col .hud {                 /* 四个方框放到中间上�
   display: grid; grid-template-columns: repeat(2, 1fr);
   gap: 3px; margin: 0; width: 100%;
 }
-body.portrait .center-col .hud-item { padding: 2px 3px; }
-body.portrait .center-col .hud-item label { display: block; font-size: 8.5px; margin: 0; }
-body.portrait .center-col .hud-item b { font-size: 12px; }
+body.portrait .center-col .hud-item { padding: 3px 3px; }
+body.portrait .center-col .hud-item label { display: block; font-size: 9px; margin: 0; }
+body.portrait .center-col .hud-item b { font-size: 14px; }
+body.portrait .center-info { padding: 7px 5px; }
+body.portrait .turn-indicator { font-size: 12px; }
+body.portrait .center-meta { font-size: 10px; }
 body.portrait .actionbar { justify-self: stretch; }
 body.portrait .actionbar .hint-text { display: none; }   /* 竖屏放不下，藏掉 */
+body.portrait .actionbar .act { min-height: 50px; font-size: 15px; }
 body.portrait .seat-self .row.waits { flex-wrap: nowrap; }
-/* 竖屏空间富余：牌河自己撑满，能显示多少行就显示多少行 */
-body.portrait .seat-opp .row.discards { flex: 1 1 auto; min-height: 0; }
-body.portrait .seat-opp .row.discards .discards-list { max-height: 100%; overflow: hidden; }
+/* 面板紧凑：对手牌河最多 6 行、自己 3 行，都不会撑满整屏，中间留出桌面 */
+body.portrait .seat-opp .row.discards { flex: 0 0 auto; }
+body.portrait .seat-opp .row.discards .discards-list { max-height: calc(var(--river-h) * 6 + 6px); overflow: hidden; }
+body.portrait .seat-self .row.discards .discards-list { max-height: calc(var(--river-h) * 3 + 3px); overflow: hidden; }
+body.portrait .seat-self .row.waits { padding: 3px 6px; }
 
 /* ============================================================
    触摸交互

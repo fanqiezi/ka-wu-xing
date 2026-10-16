@@ -140,7 +140,9 @@ async function check(name, file) {
     assert(badge, '刚摸的那张应有角标');
     eq(badge.textContent, '5', '角标数字（四筒×2 + 七筒×3）');
     assert(badge.classList.contains('warn'), '屁胡角标应是金色 warn');
-    assert(hand.classList.contains('compact'), '默认应是紧凑档');
+    // 竖屏默认两行（用户选定），横屏默认单行紧凑
+    assert(hand.classList.contains(isPortrait ? 'two-rows' : 'compact'),
+      (isPortrait ? '竖屏默认应是两行档' : '横屏默认应是紧凑档') + '，实际 ' + hand.className);
   });
 
   test('听牌行：写清「打 九筒 → 听 四筒×2、七筒×3（共 5 张 · 屁胡只能自摸）」', () => {

@@ -87,7 +87,9 @@
   function clear(host) { if (host) host.innerHTML = ''; }
 
   /* ---------- 展示状态（只影响样张） ---------- */
-  var view = { state: 'normal', handSize: 'compact', river: 'full' };
+  // 竖屏默认两行手牌（用户选定），横屏单行
+  var isPortraitPage = document.body.className.indexOf('portrait') >= 0;
+  var view = { state: 'normal', handSize: isPortraitPage ? 'twoRows' : 'compact', river: 'full' };
   // 支持用链接参数直接看某个状态，方便截图核对：?state=danger&hand=big&river=short
   var qs = location.search || '';
   var qm = /[?&]state=(normal|danger|selfLd)/.exec(qs);
