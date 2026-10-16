@@ -82,6 +82,11 @@ body.layout-mobile .brand { gap: 5px; min-width: 0; }
 body.layout-mobile .brand .logo { width: 22px; height: 22px; font-size: 13px; border-radius: 6px; }
 body.layout-mobile .brand h1 { font-size: 12px; letter-spacing: 1px; }
 body.layout-mobile .brand .sub { display: none; }          /* 去掉第二行，顶部不换行 */
+/* 320 宽的小屏（iPhone SE1）：顶栏标题会顶到按钮上，只留红色「中」标 */
+@media (max-width: 358px) {
+  body.layout-mobile .brand h1 { display: none; }
+  body.layout-mobile .topbtns .btn { padding: 3px 5px; font-size: 10px; }
+}
 body.layout-mobile .hud { display: flex; gap: 3px; margin-left: auto; flex-wrap: nowrap; }
 body.layout-mobile .hud-item { min-width: 0; padding: 1px 6px; border-radius: 6px; text-align: center; }
 body.layout-mobile .hud-item label { display: inline; font-size: 9px; letter-spacing: 0; margin-right: 2px; }

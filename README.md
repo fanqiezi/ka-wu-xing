@@ -47,6 +47,8 @@ index.html?layout=desktop     强制电脑版（手机上想用桌面版时）
 要看真实效果：手机上直接开 <https://fanqiezi.github.io/ka-wu-xing/>，或用
 `node tests/shots-real.js`（puppeteer + 本机 Chrome）在 390×844 / 844×390 / 1280×800 三种尺寸下截图 + 自检
 （会打印每个区块的真实尺寸、手牌几行、面板有没有重叠、有没有横向溢出）。
+`node tests/shots-sizes.js` 会在 **9 种真机尺寸**（320×568 ~ 932×430，含 iPhone SE1 / SE2 / 12 / Pro Max / iPad 的横竖屏）
+下逐项自检，并额外跑一遍「对手亮倒」的最坏情况。
 
 之前评审用的两张**纯静态样张**还留着，可以单独点开对比（假数据、不接逻辑，牌面与正式版同一套 SVG）：
 
