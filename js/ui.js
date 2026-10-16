@@ -363,12 +363,15 @@
    */
   function placeExtras(mode) {
     var table = $('table'), app = $('app'), bar = $('actionbar');
-    var sidebar = $('sidebar');
+    var sidebar = $('sidebar'), centerCol = $('center-col');
     var own = table && table.appendChild;
     if (!table || !app || !bar) return;
     if (mode === 'portrait') {
       if (own && bar.parentNode !== table) table.appendChild(bar);
-      if (own && sidebar && sidebar.parentNode !== table) table.appendChild(sidebar);
+      // 竖屏：操作历史放「中间那一竖条」（四个方框/出牌提示下面的空白），不横跨一整排
+      if (sidebar && centerCol && centerCol.appendChild && sidebar.parentNode !== centerCol) {
+        centerCol.appendChild(sidebar);
+      }
     } else if (mode === 'landscape') {
       if (own && bar.parentNode !== table) table.appendChild(bar);
       if (sidebar && sidebar.parentNode !== app && app.appendChild) app.appendChild(sidebar);
@@ -529,7 +532,7 @@
     head.className = 'seat-head';
     var who = document.createElement('span');
     who.className = 'who';
-    who.textContent = p.name + (isSelf ? '（你）' : '');
+    who.textContent = isSelf ? '玩家' : p.name;
     head.appendChild(who);
 
     if (state.dealer === p.seat) {
@@ -844,14 +847,25 @@
         p.reveal.forEach(function (t) {
           revRow.appendChild(makeTile(t, size, { title: '亮倒的牌：' + T.nameOf(t) }));
         });
-        container.appendChild(revRow);
       }
       // 亮倒的对手手牌已经公开，顺便把他的听牌也标出来（只说听什么，不说番数）
+      var oppWaitRow = null;
       if (p.liangdao && p.hand.length % 3 === 1) {
         var info = waitInfoOf(p.hand, p.melds, remainFor(seat), state.rules);
-        if (info) container.appendChild(makeWaitRow(info, { label: '听牌', hideNote: true }));
+        if (info) oppWaitRow = makeWaitRow(info, { label: '听牌', hideNote: true });
       }
-      container.appendChild(scrollBox);
+      // 亮倒 / 听牌 / 副露 / 牌河 全部塞进同一个 .seat-scroll：
+      // 手机版整块一起滚（不再是一个能滚、另一个滚不动）。
+      // 桌面版结构保持原样（各自是座位下的独立行），免得间距跟着变。
+      if (isMobileLayout()) {
+        if (revRow) scrollBox.insertBefore(revRow, meldRow);
+        if (oppWaitRow) scrollBox.insertBefore(oppWaitRow, meldRow);
+        container.appendChild(scrollBox);
+      } else {
+        if (revRow) container.appendChild(revRow);
+        if (oppWaitRow) container.appendChild(oppWaitRow);
+        container.appendChild(scrollBox);
+      }
     }
   }
 
@@ -911,10 +925,15 @@
     if (!pendingAsk || !game) return;
 
     if (pendingAsk.kind === 'discard') {
-      var hint = document.createElement('div');
-      hint.style.cssText = 'font-size:13px;color:#a8c2b6;padding:8px 6px;';
-      hint.textContent = '点击手牌打出';
-      el.actionbar.appendChild(hint);
+      // 手机版：这里原来放「点击手牌打出」的文本框，已去掉
+      //（询问栏由 CSS 固定占位 54px，空着也不塌，手牌不会上下跳）。
+      // 桌面版没有固定占位，保留原来的提示文字，外观不变。
+      if (!isMobileLayout()) {
+        var hint = document.createElement('div');
+        hint.style.cssText = 'font-size:13px;color:#a8c2b6;padding:8px 6px;';
+        hint.textContent = '点击手牌打出';
+        el.actionbar.appendChild(hint);
+      }
       return;
     }
 

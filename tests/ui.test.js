@@ -319,7 +319,8 @@ function boot(seed) {
     const tiles = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'clickable'));
     assert.strictEqual(tiles.length, 13, '13 张手牌都应可点击');
     const bar = dom.byId['actionbar'];
-    assert.ok(bar.children.length > 0, '应提示点击手牌打出');
+    // 桌面版保留「点击手牌打出」的提示（手机版才删掉，靠 CSS 固定占位）
+    assert.ok(bar.children.length > 0, '桌面版应提示点击手牌打出');
     tiles[0].click();
     const ans = await p;
     assert.strictEqual(ans.type, 'discard');
@@ -829,34 +830,36 @@ function boot(seed) {
     assert.strictEqual(dom.byId['hud'].parentNode, dom.byId['topbar']);
   });
 
-  await atest('竖屏：询问栏在自己方框上方单独一排，操作历史摆在中间空当', async () => {
+  await atest('竖屏：询问栏在自己方框上方单独一排，操作历史只占中间那一竖条', async () => {
     const ui = win.KWX_UI;
     const g = ui.getGame();
     if (g) g.stop();
     const table = dom.byId['table'];
     const bar = dom.byId['actionbar'];
     const side = dom.byId['sidebar'];
+    const centerCol = dom.byId['center-col'];
 
     ui.setLayout('portrait');
     assert.strictEqual(bar.parentNode, table, '竖屏：询问栏应搬进牌桌（单独一排），实际挂在 ' + (bar.parentNode && bar.parentNode.id));
-    assert.strictEqual(side.parentNode, table, '竖屏：操作历史应搬进牌桌中间空当');
+    // 操作历史不再占一整排，而是塞进中间那一竖条（四个方框/提示下面）
+    assert.strictEqual(side.parentNode, centerCol, '竖屏：操作历史应挂在中间栏 center-col，实际 ' +
+      (side.parentNode && (side.parentNode.id || side.parentNode.className)));
     const kids = table.children;
-    assert.ok(kids.indexOf(bar) >= 0 && kids.indexOf(side) >= 0,
-      '竖屏：询问栏和操作历史都要挂在牌桌里，实际顺序 ' + kids.map(n => n.id || n.className).join(' > '));
-    // 视觉上的上下顺序由 mobile.css 的栅格行决定：
-    // 1 对手 / 2 操作历史（中间下面的空当）/ 3 询问栏（固定 54px 单独一排）/ 4 自己
+    assert.ok(kids.indexOf(bar) >= 0, '竖屏：询问栏要挂在牌桌里，实际顺序 ' + kids.map(n => n.id || n.className).join(' > '));
+    assert.ok(kids.indexOf(side) < 0, '竖屏：操作历史不该再占牌桌的一整排');
+    // 栅格：中间区（对手 + 中间那一竖条）— 询问栏（固定 54px）— 自己
     const css = fs.readFileSync(path.join(ROOT, 'css/mobile.css'), 'utf8');
     const rows = {};
-    ['sidebar', 'actionbar', 'seat-self'].forEach(function (sel) {
+    ['actionbar', 'seat-self'].forEach(function (sel) {
       const s = sel.replace('-', '\\-');
       const re = new RegExp('body\\.layout-mobile\\.layout-portrait\\s+\\.' + s + '\\s*\\{[^}]*grid-row:\\s*(\\d+)');
       const m = re.exec(css);
       rows[sel] = m ? Number(m[1]) : null;
     });
-    assert.ok(rows['sidebar'] && rows['actionbar'] && rows['seat-self'],
-      '竖屏栅格应分别给操作历史/询问栏/自己指定行号，实际 ' + JSON.stringify(rows));
-    assert.ok(rows['sidebar'] < rows['actionbar'] && rows['actionbar'] < rows['seat-self'],
-      '竖屏应从下到上为「操作历史 > 询问栏 > 自己」，实际 ' + JSON.stringify(rows));
+    assert.ok(rows['actionbar'] === 2 && rows['seat-self'] === 3,
+      '竖屏栅格应是 1 中间区 / 2 询问栏 / 3 自己，实际 ' + JSON.stringify(rows));
+    assert.ok(/body\.layout-mobile\.layout-portrait\s+\.center-col\s+\.sidebar\s*\{[^}]*flex:\s*1 1 auto/.test(css),
+      '竖屏：操作历史要在中间栏里 flex:1（吃掉四个方框/提示下面的空白）');
 
     ui.setLayout('landscape');
     assert.strictEqual(side.parentNode, dom.byId['app'], '横屏：操作历史回到右侧栏');
@@ -866,8 +869,41 @@ function boot(seed) {
       '横屏：询问栏应摆在自己那一行的第 2 列（手牌右边）');
   });
 
-  await atest('手机版二次点击出牌：第一次选中、第二次才真的打出', async () => {
+  await atest('手机版出牌询问：询问栏里不再有「点击手牌打出」文本框（靠 CSS 固定占位）', async () => {
     const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    const p0 = g.players[0];
+    p0.hand = H('123456789t 123b 11b');
+    p0.melds = [];
+    p0.lastDraw = null;
+
+    ui.setLayout('desktop');
+    const pr = g.ask({ kind: 'discard', seat: 0, tiles: p0.hand.slice(), allowed: p0.hand.slice(), banned: [] });
+    assert.ok(dom.byId['actionbar'].children.length > 0, '桌面版该有提示文字');
+
+    ui.setLayout('portrait');
+    assert.strictEqual(dom.byId['actionbar'].children.length, 0, '手机版不该再有提示文本框');
+    // 手机版点两下同一张 = 出牌（顺便把这一问结掉）
+    const tiles = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'clickable'));
+    tiles[0].click();
+    tiles[0].click();
+    const ans = await pr;
+    assert.strictEqual(ans.type, 'discard', '两次点击应完成出牌');
+    ui.setLayout('desktop');
+  });
+
+  await atest('手机版：玩家方框标题是「玩家」不再是「你（你）」', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    g.emit('change', { evt: 'test' });
+    const who = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'who'))[0];
+    assert.ok(who, '应有玩家标题');
+    assert.strictEqual(who.textContent, '玩家', '实际 "' + who.textContent + '"');
+  });
+
+  await atest('手机版二次点击出牌：第一次选中、第二次才真的打出', async () => {    const ui = win.KWX_UI;
     const g = ui.getGame();
     g.stop();
     ui.setLayout('portrait');

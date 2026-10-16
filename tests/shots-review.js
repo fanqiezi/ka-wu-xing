@@ -1,7 +1,9 @@
 /*
- * 针对一次改动做定点截图（开发用，需要 puppeteer-core + 本机 Chrome）
+ * 定点截图 + 实测坐标（开发用，需要 puppeteer-core + 本机 Chrome）
+ * 覆盖：竖屏询问栏固定占位、按钮平铺/竖排、对手面板换行与单滚动条、
+ *       横屏玩家区副露/牌河并排、竖屏↔横屏来回切后操作历史不被压没
  * 用法： NODE_PATH=<装了 puppeteer-core 的 node_modules> node tests/shots-review.js
- * 输出 dist/rv-*.png
+ * 输出 dist/rv2-*.png
  */
 'use strict';
 
@@ -12,6 +14,124 @@ const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const ROOT = path.join(__dirname, '..');
 const url = q => 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') + q;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const OUT = n => path.join(ROOT, 'dist', 'rv2-' + n + '.png');
+
+/* 把「对手满状态」塞进去：亮倒 + 听牌 + 副露 + 长牌河 */
+const FILL_OPP = () => {
+  const g = window.KWX_UI.getGame();
+  g.stop(); g.playing = true;
+  const p = g.players[1];
+  p.liangdao = true;
+  // 碰 中中中 + 杠 9条9条9条9条（7 张副露）→ 手牌 7 张（听 4筒）
+  p.melds = [{ kind: 'pong', tile: 18 }, { kind: 'kong', tile: 9 }];
+  p.hand = [0, 0, 0, 1, 2, 3, 4];
+  p.discards = [];
+  for (let i = 0; i < 24; i++) p.discards.push(i % 9);
+  p.liangdaoReveal = null;
+  const q = g.players[2];
+  q.liangdao = false;
+  q.melds = [];
+  q.hand = [1, 2, 3, 10, 11, 12, 19, 19, 20, 20, 4, 5, 6];
+  q.discards = [5, 6, 7, 8, 0, 1];
+  // 自己：一副露 + 长牌河（横屏要能左右滑）
+  const m = g.players[0];
+  m.melds = [{ kind: 'pong', tile: 20 }];
+  m.discards = [];
+  for (let i = 0; i < 26; i++) m.discards.push((i * 2) % 9);
+  g.emit('change', { evt: 'test' });
+};
+
+/* 冻结牌局：不动了才好前后对比（否则两次测量之间牌河还在长） */
+const FREEZE = () => {
+  const g = window.KWX_UI.getGame();
+  g.stop(); g.playing = true;
+  g.emit('change', { evt: 'freeze' });
+};
+
+const MEASURE_PORTRAIT = () => {
+  const R = n => { if (!n) return null; const b = n.getBoundingClientRect(); return [Math.round(b.top), Math.round(b.height)]; };
+  const bar = document.getElementById('actionbar');
+  const side = document.getElementById('sidebar');
+  const seat1 = document.getElementById('seat-1');
+  const scrolls = seat1 ? seat1.querySelectorAll('.seat-scroll') : [];
+  const rowInfo = (sel) => {
+    const row = seat1 ? seat1.querySelector(sel) : null;
+    if (!row) return null;
+    const lab = row.querySelector('.row-label');
+    const tiles = row.querySelectorAll('.tile');
+    const rb = row.getBoundingClientRect();
+    // 一排几张：按第一排的 top 统计（容差 3px）
+    const firstTop = tiles.length ? tiles[0].getBoundingClientRect().top : 0;
+    let perRow = 0;
+    for (const t of tiles) if (Math.abs(t.getBoundingClientRect().top - firstTop) < 3) perRow++;
+    return {
+      labelOwnLine: lab ? (lab.getBoundingClientRect().width >= rb.width - 6) : null,
+      tiles: tiles.length, perRow: perRow,
+      overflowRight: tiles.length ? Math.round(tiles[tiles.length - 1].getBoundingClientRect().right - rb.right) : 0,
+      scrollable: row.scrollHeight > row.clientHeight + 1
+    };
+  };
+  return {
+    who: document.querySelector('#seat-0 .seat-head .who').textContent,
+    body: document.body.className,
+    bar: R(bar), barEmpty: bar.children.length === 0,
+    barKids: bar.children.length,
+    side: R(side), self: R(document.querySelector('#seat-0')),
+    opp: R(seat1),
+    blocks: (() => {
+      const list = [['topbar', document.querySelector('.topbar')], ['opponents', document.querySelector('.opponents')],
+        ['seat1', document.getElementById('seat-1')], ['seat2', document.getElementById('seat-2')],
+        ['centerCol', document.getElementById('center-col')], ['hud', document.getElementById('hud')],
+        ['sidebar', side], ['actionbar', bar], ['self', document.querySelector('#seat-0')]];
+      const out = {};
+      list.forEach(([k, n]) => {
+        const b = n ? n.getBoundingClientRect() : null;
+        out[k] = b ? [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)] : null;
+      });
+      // 竖屏只有 对手栏 / 询问栏 / 自己 三行，操作历史在中间那一竖条里
+      const seq = ['opponents', 'actionbar', 'self'];
+      const bad = [];
+      for (let i = 1; i < seq.length; i++) {
+        const a = out[seq[i - 1]], b = out[seq[i]];
+        if (a && b && b[1] < a[3] - 1) bad.push(seq[i - 1] + '↔' + seq[i]);
+      }
+      if (out.sidebar && out.actionbar && out.sidebar[3] > out.actionbar[1] + 1) bad.push('sidebar↔actionbar');
+      out.overlap = bad;
+      out.sidebarParent = side.parentNode ? (side.parentNode.id || side.parentNode.className) : null;
+      out.sidebarWidthPct = Math.round((out.sidebar ? out.sidebar[2] - out.sidebar[0] : 0) / window.innerWidth * 100);
+      return out;
+    })(),
+    scrollCount: scrolls.length,
+    scrollable: scrolls.length ? scrolls[0].scrollHeight > scrolls[0].clientHeight + 1 : null,
+    innerScrolls: seat1 ? Array.prototype.filter.call(seat1.querySelectorAll('.row, .discards-list'),
+      n => n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1).map(n => n.className) : [],
+    discards: rowInfo('.row.discards'), melds: rowInfo('.row.melds'), waits: rowInfo('.row.waits'),
+    docOverflowY: document.documentElement.scrollHeight > window.innerHeight + 1,
+    docOverflowX: document.documentElement.scrollWidth > window.innerWidth + 1
+  };
+};
+
+const MEASURE_LANDSCAPE = () => {
+  const R = n => { if (!n) return null; const b = n.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
+  const bar = document.getElementById('actionbar');
+  const acts = Array.prototype.map.call(bar.querySelectorAll('.act'), n => R(n));
+  const self = document.getElementById('seat-0');
+  const sc = self.querySelector('.seat-scroll');
+  const melds = self.querySelector('.row.melds');
+  const disc = self.querySelector('.row.discards');
+  return {
+    barParent: bar.parentNode.id || bar.parentNode.className,
+    bar: R(bar), acts: acts,
+    // 竖排：x 相同、y 递增
+    vertical: acts.length >= 2 ? (acts[0][0] === acts[1][0] && acts[1][1] > acts[0][1]) : null,
+    hand: R(self.querySelector('.hand-row')),
+    melds: R(melds), discards: R(disc),
+    // 并排：副露在左、牌河在右
+    sideBySide: (melds && disc) ? (melds.getBoundingClientRect().right <= disc.getBoundingClientRect().left + 2) : null,
+    scrollBox: R(sc), scrollX: sc ? [Math.round(sc.scrollWidth), Math.round(sc.clientWidth)] : null,
+    docOverflowY: document.documentElement.scrollHeight > window.innerHeight + 1
+  };
+};
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -19,213 +139,151 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     args: ['--no-sandbox', '--disable-gpu', '--hide-scrollbars']
   });
 
-  // ① 竖屏：轮到自己出牌（询问栏那一排）
-  let page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  await page.goto(url('?layout=portrait'), { waitUntil: 'load' });
-  await page.waitForFunction('window.KWX_UI !== undefined');
-  await page.click('#start-btn');
-  await page.evaluate(() => { const g = window.KWX_UI.getGame(); if (g) g.speed = 0; });
-  for (let i = 0; i < 80; i++) {
-    const k = await page.evaluate(() => { const a = window.KWX_UI.getPending(); return a ? a.kind : null; });
-    if (k) break;
-    await sleep(120);
+  async function open(q, w, h) {
+    const page = await browser.newPage();
+    await page.setViewport({ width: w, height: h, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    await page.goto(url(q), { waitUntil: 'load' });
+    await page.waitForFunction('window.KWX_UI !== undefined');
+    await page.click('#start-btn');
+    await page.evaluate(() => { const g = window.KWX_UI.getGame(); if (g) g.speed = 0; });
+    await sleep(250);
+    return page;
   }
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-portrait-ask.png') });
-  const pt = await page.evaluate(() => {
-    const r = n => { if (!n) return null; const b = n.getBoundingClientRect(); return [Math.round(b.top), Math.round(b.height)]; };
-    return {
-      bar: r(document.querySelector('#actionbar')),
-      self: r(document.querySelector('#seat-0')),
-      log: r(document.querySelector('.sidebar')),
-      logParent: document.querySelector('.sidebar').parentNode.id || document.querySelector('.sidebar').parentNode.className,
-      barParent: document.querySelector('#actionbar').parentNode.id || document.querySelector('#actionbar').parentNode.className
-    };
-  });
-  console.log('竖屏：询问栏 top/h=' + pt.bar + ' 自己 top/h=' + pt.self + ' 操作历史 top/h=' + pt.log);
-  console.log('      操作历史挂在 ' + pt.logParent + '，询问栏挂在 ' + pt.barParent);
-  await page.close();
 
-  // ② 横屏：询问按钮应在手牌右侧
-  page = await browser.newPage();
-  await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  await page.goto(url('?layout=landscape'), { waitUntil: 'load' });
-  await page.waitForFunction('window.KWX_UI !== undefined');
-  await page.click('#start-btn');
-  await page.evaluate(() => { const g = window.KWX_UI.getGame(); if (g) g.speed = 0; });
-  for (let i = 0; i < 80; i++) {
-    const k = await page.evaluate(() => { const a = window.KWX_UI.getPending(); return a ? a.kind : null; });
-    if (k) break;
-    await sleep(120);
+  async function waitAsk(page, kinds) {
+    for (let i = 0; i < 90; i++) {
+      const k = await page.evaluate(() => { const a = window.KWX_UI.getPending(); return a ? a.kind : null; });
+      if (k && (!kinds || kinds.indexOf(k) >= 0)) return k;
+      await sleep(120);
+    }
+    return null;
   }
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-landscape-ask.png') });
-  const lt = await page.evaluate(() => {
-    const r = n => { if (!n) return null; const b = n.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width)]; };
-    return {
-      hand: r(document.querySelector('#seat-0 .hand-row')),
-      bar: r(document.querySelector('#actionbar')),
-      sidebar: r(document.querySelector('.sidebar'))
-    };
-  });
-  console.log('横屏：手牌 left/top/w=' + lt.hand + ' 询问栏=' + lt.bar + ' 侧栏=' + lt.sidebar);
-  await page.close();
 
-  // ③ 竖屏：攒几局记录后打开「对局记录」看折线图与宽表
-  page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  await page.goto(url('?layout=portrait'), { waitUntil: 'load' });
-  await page.waitForFunction('window.KWX_UI !== undefined');
-  await page.click('#start-btn');
-  await page.evaluate(async () => {
-    const g = window.KWX_UI.getGame();
-    g.speed = 0;
-    g.stop();
-    g.players.forEach(p => { p.isAI = true; });
-    for (let i = 0; i < 4; i++) await g.startRound();
-  });
-  await sleep(300);
-  const histLen = await page.evaluate(() => {
-    const g = window.KWX_UI.getGame();
-    return { rounds: g.roundNo, history: g.history.length };
-  });
-  // 结算窗是延迟弹的：先等它们全部弹完，再直接把弹窗 DOM 清空
-  //（点「下一局」会再开一局、又弹一个结算窗，所以不能点按钮）
-  await page.evaluate(() => { const g = window.KWX_UI.getGame(); g.stop(); });
-  await sleep(900);
-  await page.evaluate(() => {
-    const h = document.getElementById('modal-host');
-    if (h) { h.hidden = true; h.innerHTML = ''; }
-  });
-  await sleep(120);
-  await page.click('#btn-history');
-  await sleep(500);
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-history-portrait.png') });
-  const ht = await page.evaluate(() => {
-    const m = document.querySelector('#modal-host .modal');
-    const c = document.querySelector('#history-chart');
-    const w = document.querySelector('.chart-wrap');
-    const b = n => { if (!n) return null; const r = n.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
-    return {
-      modal: b(m), chart: b(c), wrap: b(w),
-      chartCss: c ? [c.clientWidth, c.clientHeight] : null,
-      modalText: m ? m.textContent.slice(0, 40) : '(没有弹窗)',
-      overflowY: document.documentElement.scrollHeight > window.innerHeight + 1
-    };
-  });
-  console.log('竖屏记录：局数=' + histLen.rounds + ' 记录条数=' + histLen.history);
-  console.log('竖屏记录弹窗: 弹窗=' + ht.modal + ' 图框=' + ht.wrap + ' canvas=' + ht.chart + ' canvas 内部=' + ht.chartCss);
-  console.log('      弹窗开头文字: ' + ht.modalText);
-  // 滚到底：看按钮条有没有盖住内容、学习表列是否齐全
-  const bt = await page.evaluate(() => {
-    const m = document.querySelector('#modal-host .modal');
-    m.scrollTop = m.scrollHeight;
-    const bar = m.querySelector('.modal-actions');
-    const tables = Array.from(m.querySelectorAll('table'));
-    const last = tables.length ? tables[tables.length - 1] : null;
-    const head = last ? Array.from(last.querySelectorAll('th')).map(t => t.textContent).join('|') : '(无表)';
-    const firstRow = last ? Array.from(last.querySelectorAll('tbody tr')).slice(0, 1)
-      .map(tr => Array.from(tr.children).map(td => td.textContent).join('|'))[0] : '';
-    const rb = bar.getBoundingClientRect(), lb = last ? last.getBoundingClientRect() : null;
-    return {
-      scrollTop: Math.round(m.scrollTop), scrollH: m.scrollHeight, clientH: m.clientHeight,
-      bar: [Math.round(rb.top), Math.round(rb.bottom)], tableBottom: lb ? Math.round(lb.bottom) : null,
-      head: head, firstRow: firstRow || '(表里还没数据)'
-    };
-  });
+  // ① 竖屏：出牌询问（询问栏空着但要占 54px）
+  let page = await open('?layout=portrait', 390, 844);
+  await waitAsk(page, ['discard']);
   await sleep(200);
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-history-bottom.png') });
-  console.log('      滚动到底: ' + bt.scrollTop + '/' + (bt.scrollH - bt.clientH) + '，按钮条=' + bt.bar + '，最末表底=' + bt.tableBottom);
-  console.log('      学习/明细表头: ' + bt.head);
-  console.log('      首行数据: ' + bt.firstRow);
+  await page.screenshot({ path: OUT('portrait-ask') });
+  let m = await page.evaluate(MEASURE_PORTRAIT);
+  console.log('① 竖屏出牌询问：玩家框标题="' + m.who + '"');
+  console.log('   询问栏 top/h=' + m.bar + ' 空的=' + m.barEmpty + '（应仍是 54 高）；操作历史 top/h=' + m.side + ' 挂在 ' +
+    m.blocks.sidebarParent + '，宽度占屏 ' + m.blocks.sidebarWidthPct + '%；自己=' + m.self);
+  console.log('   纵向溢出=' + m.docOverflowY + ' 横向溢出=' + m.docOverflowX);
   await page.close();
 
-  // ④ 竖屏：对手亮倒（手牌张数要减掉亮出的牌、听牌行不暴露番数）
-  page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  await page.goto(url('?layout=portrait'), { waitUntil: 'load' });
-  await page.waitForFunction('window.KWX_UI !== undefined');
-  await page.click('#start-btn');
+  // ①b 竖屏：亮倒询问（两个按钮）——一行平铺、等分，询问栏高度不变
+  page = await open('?layout=portrait', 390, 844);
   await page.evaluate(() => {
     const g = window.KWX_UI.getGame();
-    g.stop(); g.playing = true;
-    const p = g.players[1];
-    p.liangdao = true;
-    p.melds = [];
-    // 11134567999筒 + 中中 → 听 2/5/8 筒，亮倒只该亮 34567筒（5 张）
-    p.hand = [0, 0, 0, 2, 3, 4, 5, 6, 8, 8, 8, 17, 17];
-    p.discards = [3, 12, 20, 7, 15, 2];
-    p.liangdaoReveal = null;
-    g.emit('change', { evt: 'test' });
+    g.stop();   // 不要把 playing 打开，否则牌局那一拍会接着跑，把询问换成出牌询问
+    g.ask({ kind: 'self', seat: 0, actions: [{ type: 'liangdao' }, { type: 'pass' }] });
   });
-  await sleep(200);
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-portrait-reveal.png') });
-  const rt = await page.evaluate(() => {
-    const seat = document.querySelector('#seat-1');   // players[1] 是下家
-    const rows = seat.querySelectorAll('.hand-row .tile.back').length;
-    const rev = seat.querySelectorAll('.row.reveal-row .tile').length;
-    const waits = seat.querySelector('.row.waits');
-    const hand = window.KWX_UI.getGame().players[1].hand.length;
-    return { hand: hand, backs: rows, reveal: rev, waitText: waits ? waits.textContent.replace(/\s+/g, '') : '(无)' };
-  });
-  console.log('亮倒对手：手里 ' + rt.hand + ' 张 → 牌背 ' + rt.backs + ' 张、亮出 ' + rt.reveal +
-    ' 张（' + rt.hand + '-' + rt.reveal + '=' + (rt.hand - rt.reveal) + '）、听牌行「' + rt.waitText + '」');
-  await page.close();
-
-  // ⑤ 竖屏：亮倒奖惩记忆——按「情况」分桶复盘的表格
-  page = await browser.newPage();
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
-  await page.goto(url('?layout=portrait'), { waitUntil: 'load' });
-  await page.waitForFunction('window.KWX_UI !== undefined');
-  await page.click('#start-btn');
-  const injected = await page.evaluate(async () => {
-    const g = window.KWX_UI.getGame();
-    g.speed = 0;
-    g.stop();
-    // 记录表要先有一局才打得开
-    g.players.forEach(p => { p.isAI = true; });
-    await g.startRound();
-    g.stop();
-    const AI = window.KWX.AI;
-    const t = g.liangdaoLearn[1];
-    // 三种情况各记几次：赢的倾向 >1、输的 <1
-    const cases = [
-      [{ fan: 1, width: 5, wall: 40, remainWin: 6, threat: 0 }, true, true, '平胡', 3],
-      [{ fan: 1, width: 5, wall: 40, remainWin: 6, threat: 0 }, false, false, '平胡', 2],
-      [{ fan: 6, width: 2, wall: 10, remainWin: 2, threat: 2 }, true, true, '清一色', 2],
-      [{ fan: 6, width: 2, wall: 10, remainWin: 2, threat: 2 }, false, false, '清一色', 1]
-    ];
-    const keys = [];
-    cases.forEach(c => {
-      const key = AI.situationKey(c[0]);
-      keys.push(key);
-      for (let i = 0; i < c[4]; i++) AI.noteLiangdaoResult(t, key, c[2], c[3]);
+  await sleep(350);
+  await page.screenshot({ path: OUT('portrait-buttons') });
+  const pb = await page.evaluate(() => {
+    const b = document.getElementById('actionbar');
+    const r = b.getBoundingClientRect();
+    const acts = Array.prototype.map.call(b.querySelectorAll('.act'), n => {
+      const q = n.getBoundingClientRect();
+      return [Math.round(q.left), Math.round(q.width), Math.round(q.height)];
     });
-    // 也给自己塞一条，验证「只列电脑」的行为
-    AI.noteLiangdaoResult(g.liangdaoLearn[0], AI.situationKey({ fan: 2, width: 4, wall: 30, remainWin: 5, threat: 0 }), true, '混一色');
-    return keys;
+    return { bar: [Math.round(r.top), Math.round(r.height)], acts: acts };
   });
-  // 结算窗可能盖上来，先清掉再开记录
-  await sleep(600);
+  console.log('①b 竖屏两个按钮：询问栏 top/h=' + pb.bar + ' 按钮[左,宽,高]=' + JSON.stringify(pb.acts) +
+    ' 等宽=' + (pb.acts.length === 2 ? pb.acts[0][1] === pb.acts[1][1] : '-'));
+  await page.close();
+
+  // ①c 横屏：四个按钮（胡/杠/碰/过）——竖向一列，且不把牌桌挤爆
+  page = await open('?layout=landscape', 844, 390);
   await page.evaluate(() => {
-    const h = document.getElementById('modal-host');
-    if (h) { h.hidden = true; h.innerHTML = ''; }
+    const g = window.KWX_UI.getGame();
+    g.stop();
+    g.ask({ kind: 'claim', seat: 0, tile: 5, canHu: true, canZhiGang: true, canPong: true });
   });
-  await page.click('#btn-history');
-  await sleep(400);
-  const lt2 = await page.evaluate(() => {
-    const m = document.querySelector('#modal-host .modal');
-    m.scrollTop = m.scrollHeight;
-    const tables = Array.from(m.querySelectorAll('table'));
-    const t = tables[tables.length - 1];
+  await sleep(350);
+  await page.screenshot({ path: OUT('landscape-buttons') });
+  const lb = await page.evaluate(() => {
+    const b = document.getElementById('actionbar');
+    const r = b.getBoundingClientRect();
+    const acts = Array.prototype.map.call(b.querySelectorAll('.act'), n => {
+      const q = n.getBoundingClientRect();
+      return [Math.round(q.left), Math.round(q.top), Math.round(q.width), Math.round(q.height)];
+    });
     return {
-      rows: Array.from(t.querySelectorAll('tr')).map(tr =>
-        Array.from(tr.children).map(td => td.textContent.trim()).join(' | '))
+      bar: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+      acts: acts, docOverflowY: document.documentElement.scrollHeight > window.innerHeight + 1
     };
   });
-  await sleep(150);
-  await page.screenshot({ path: path.join(ROOT, 'dist', 'rv-history-learn.png') });
-  console.log('亮倒记忆：注入情况 ' + injected.join(' / '));
-  lt2.rows.forEach(r => console.log('      ' + r));
+  console.log('①c 横屏四个按钮：询问栏[l,t,w,h]=' + lb.bar + ' 按钮=' + JSON.stringify(lb.acts) +
+    ' 纵向溢出=' + lb.docOverflowY);
+  await page.close();
+
+  // ② 竖屏：对手满状态（亮倒 + 听牌 + 副露 + 长牌河）
+  page = await open('?layout=portrait', 390, 844);
+  await page.evaluate(FILL_OPP);
+  await sleep(200);
+  await page.screenshot({ path: OUT('portrait-opps') });
+  m = await page.evaluate(MEASURE_PORTRAIT);
+  console.log('② 竖屏对手满状态：面板 top/h=' + m.opp + ' 滚动区数=' + m.scrollCount + ' 可滚=' + m.scrollable);
+  console.log('   操作历史 top/h=' + m.side + ' 挂 ' + m.blocks.sidebarParent + ' 宽 ' +
+    (m.blocks.sidebar[2] - m.blocks.sidebar[0]) + 'px（中间那一竖条）');
+  console.log('   面板内还有别的滚动条：' + (m.innerScrolls.length ? m.innerScrolls.join(' , ') : '没有'));
+  ['discards', 'melds', 'waits'].forEach(k => {
+    const r = m[k];
+    console.log('   ' + k + '：牌 ' + (r ? r.tiles : '-') + ' 张 一排 ' + (r ? r.perRow : '-') + ' 张，标签独占一行=' +
+      (r ? r.labelOwnLine : '-') + '，越出右边 ' + (r ? r.overflowRight : '-') + 'px，自身可滚=' + (r ? r.scrollable : '-'));
+  });
+  console.log('   各块=' + JSON.stringify(m.blocks));
+  console.log('   纵向溢出=' + m.docOverflowY + ' 横向溢出=' + m.docOverflowX);
+  await page.close();
+
+  // ③ 横屏：真实询问时按钮竖排 + 玩家区副露/牌河并排
+  page = await open('?layout=landscape', 844, 390);
+  await waitAsk(page, ['claim', 'self', 'discard']);
+  await sleep(300);
+  await page.screenshot({ path: OUT('landscape-ask') });
+  let l = await page.evaluate(MEASURE_LANDSCAPE);
+  console.log('③ 横屏（有按钮时）：询问栏=' + l.bar + ' 挂 ' + l.barParent + '，按钮=' + JSON.stringify(l.acts) + '，竖排=' + l.vertical);
+  await page.evaluate(FILL_OPP);
+  await sleep(200);
+  await page.screenshot({ path: OUT('landscape') });
+  l = await page.evaluate(MEASURE_LANDSCAPE);
+  console.log('   手牌=' + l.hand + '；副露=' + l.melds + '；牌河=' + l.discards + '，并排=' + l.sideBySide +
+    '，滚动区=' + l.scrollBox + ' 内容/可视=' + l.scrollX + ' 纵向溢出=' + l.docOverflowY);
+  await page.close();
+
+  // ④ 竖屏 → 横屏 → 再切回竖屏：操作历史不能被压没
+  page = await open('?layout=portrait', 390, 844);
+  await page.evaluate(FREEZE);
+  await sleep(600);                       // 等排在队列里的那一拍跑完，免得两次测量之间牌局还在动
+  const before = await page.evaluate(MEASURE_PORTRAIT);
+  await page.evaluate(() => window.KWX_UI.setLayout('landscape'));
+  await sleep(250);
+  await page.evaluate(() => window.KWX_UI.setLayout('portrait'));
+  await page.evaluate(FREEZE);
+  await sleep(600);
+  await page.screenshot({ path: OUT('back-portrait') });
+  const after = await page.evaluate(MEASURE_PORTRAIT);
+  console.log('④ 来回切：操作历史 前 top/h=' + before.side + ' 后=' + after.side +
+    '；询问栏 前=' + before.bar + ' 后=' + after.bar +
+    '；自己 前=' + before.self + ' 后=' + after.self + '；重叠=' + JSON.stringify(after.blocks.overlap));
+  console.log('   纵向溢出=' + after.docOverflowY);
+  await page.close();
+
+  // ⑤ 小屏竖屏（320×568）也要放得下、四块不重叠
+  page = await open('?layout=portrait', 320, 568);
+  await page.evaluate(FILL_OPP);
+  await sleep(200);
+  await page.screenshot({ path: OUT('small-portrait') });
+  m = await page.evaluate(MEASURE_PORTRAIT);
+  console.log('⑤ 320×568 满状态：操作历史 top/h=' + m.side + ' 对手面板=' + m.opp + ' 自己=' + m.self +
+    ' 重叠=' + JSON.stringify(m.blocks.overlap));
+  console.log('   各块=' + JSON.stringify(m.blocks));
+  const kids = await page.evaluate(() => Array.prototype.map.call(
+    document.querySelector('#seat-0').children,
+    n => (n.className || n.tagName) + '=' + Math.round(n.getBoundingClientRect().height)));
+  console.log('   自己那块里面：' + kids.join(' | '));
+  console.log('   纵向溢出=' + m.docOverflowY + ' 横向溢出=' + m.docOverflowX);
   await page.close();
 
   await browser.close();

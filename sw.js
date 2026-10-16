@@ -5,7 +5,7 @@
    ============================================================ */
 'use strict';
 
-var VERSION = 'v1.1.1';
+var VERSION = 'v1.1.2';
 var CACHE = 'ka-wu-xing-' + VERSION;
 
 var SHELL = [

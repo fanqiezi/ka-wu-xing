@@ -201,10 +201,14 @@ body.layout-mobile.layout-landscape .sidebar {
 body.layout-mobile.layout-landscape .seat-self { grid-column: 1; grid-row: 2; flex: 0 0 auto; }
 body.layout-mobile.layout-landscape .actionbar {
   grid-column: 2; grid-row: 2; align-self: center;
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px; max-width: 170px; padding: 4px;
+  /* 横屏：按钮竖向排列成一列（手牌右边那一窄条） */
+  display: grid; grid-template-columns: minmax(0, 1fr); align-content: center;
+  gap: 4px; max-width: 108px; min-height: 96px; padding: 4px;
 }
-body.layout-mobile.layout-landscape .actionbar .act { min-height: 38px; font-size: 13px; padding: 2px; }
+body.layout-mobile.layout-landscape .actionbar:empty {
+  display: grid; background: transparent; border-color: transparent; box-shadow: none;
+}
+body.layout-mobile.layout-landscape .actionbar .act { min-height: 30px; font-size: 12.5px; padding: 2px; }
 body.layout-mobile.layout-landscape .actionbar .hint,
 body.layout-mobile.layout-landscape .actionbar > div {
   grid-column: 1 / -1; text-align: center; font-size: 9px; padding: 2px;
@@ -217,9 +221,24 @@ body.layout-mobile.layout-landscape .seat-scroll {
   touch-action: pan-y; max-height: 96px;
 }
 body.layout-mobile.layout-landscape .seat-opp .seat-scroll { max-height: none; flex: 1 1 auto; }
+/* 横屏玩家区：副露、牌河 并排一行（牌河在副露右侧），右侧超出就左右一起滑 */
+body.layout-mobile.layout-landscape .seat-self .seat-scroll {
+  flex-direction: row; align-items: center; gap: 10px;
+  overflow-x: auto; overflow-y: hidden; max-height: none;
+  touch-action: pan-x; overscroll-behavior-x: contain;
+}
+body.layout-mobile.layout-landscape .seat-self .seat-scroll .row { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; }
+body.layout-mobile.layout-landscape .seat-self .row.discards .discards-list {
+  flex-wrap: nowrap; overflow: visible; max-height: none;
+}
+body.layout-mobile.layout-landscape .seat-self .row.melds .meld-group { flex: 0 0 auto; }
+/* 对手面板：只有 .seat-scroll 一个滚动条（副露/听牌/亮倒/牌河 一起滚） */
+body.layout-mobile.layout-landscape .seat-opp .row,
+body.layout-mobile.layout-landscape .seat-opp .row.discards .discards-list,
+body.layout-mobile.layout-landscape .seat-opp .row.waits { overflow: visible; }
 
 /* ============================================================
-   竖屏 390×844：四个方框进中间空当、操作历史占中间、询问栏单独一排、手牌两行
+   竖屏 390×844：四个方框 + 操作历史 都在中间那一竖条；询问栏单独一排、手牌两行
    ============================================================ */
 body.layout-mobile.layout-portrait #app {
   display: grid;
@@ -227,30 +246,40 @@ body.layout-mobile.layout-portrait #app {
   grid-template-rows: auto minmax(0, 1fr);
 }
 body.layout-mobile.layout-portrait .topbar { grid-row: 1; }
-/* 四段式：对手栏（内容高）— 操作历史（弹性）— 询问栏（固定高）— 自己（内容高贴底） */
+/* 三段式：中间区（对手 + 中间那一竖条，占满剩余高度）— 询问栏（固定高）— 自己（内容高贴底） */
 body.layout-mobile.layout-portrait .table {
   grid-row: 2; display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
 body.layout-mobile.layout-portrait .opponents {
-  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); grid-row: 1;
+  /* 中间那一竖条要放「四个方框 + 操作历史」，给它稍微宽一点（窄屏按 38vw 收） */
+  grid-template-columns: minmax(0, 1fr) min(148px, 38vw) minmax(0, 1fr); grid-row: 1;
+  align-items: start;                 /* 上家/下家 保持自己的内容高度，不跟着拉长 */
 }
-/* 操作历史搬到中间下面的空白处（右侧栏在竖屏不再显示） */
-body.layout-mobile.layout-portrait .sidebar {
-  grid-row: 2; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+/* 中间那一竖条：四个方框 + 出牌提示 + 操作历史（操作历史吃掉下面的空白） */
+body.layout-mobile.layout-portrait .center-col { align-self: stretch; }
+body.layout-mobile.layout-portrait .center-col .sidebar {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
 }
 body.layout-mobile.layout-portrait .log { overflow-y: auto; -webkit-overflow-scrolling: touch; }
-/* 询问栏：单独一排、固定高度 —— 按钮/文本出现消失都不会顶动手牌 */
+/* 询问栏：单独一排、固定高度 —— 按钮/文本出现消失都不会顶动手牌（空着也占位，但不显示空框） */
 body.layout-mobile.layout-portrait .actionbar {
-  grid-row: 3; justify-self: stretch; align-self: center;
+  grid-row: 2; justify-self: stretch; align-self: center;
   height: 54px; min-height: 54px; overflow: hidden; align-items: center;
+  flex-wrap: nowrap;                 /* 按钮平铺一行、等分铺满（不换行） */
 }
-body.layout-mobile.layout-portrait .actionbar .act { min-height: 46px; font-size: 15px; }
+body.layout-mobile.layout-portrait .actionbar:empty {
+  display: flex; background: transparent; border-color: transparent; box-shadow: none;
+}
+body.layout-mobile.layout-portrait .actionbar .act {
+  flex: 1 1 0; min-width: 0; min-height: 46px; font-size: 15px;
+}
 body.layout-mobile.layout-portrait .actionbar .hint,
 body.layout-mobile.layout-portrait .actionbar > div {
   font-size: 12px; padding: 0 6px; text-align: center; flex: 1 1 auto;
 }
-body.layout-mobile.layout-portrait .seat-self { grid-row: 4; align-self: end; }
+body.layout-mobile.layout-portrait .seat-self { grid-row: 3; align-self: end; }
 /* 四个方框放到中间上方的空当（2×2） */
 body.layout-mobile.layout-portrait .center-col {
   flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px;
@@ -269,14 +298,56 @@ body.layout-mobile.layout-portrait .seat-self .row.waits { flex-wrap: nowrap; pa
 body.layout-mobile.layout-portrait .seat-self .row.waits > * { white-space: nowrap; }
 body.layout-mobile.layout-portrait .seat-self .hand-row { flex-wrap: wrap; row-gap: 4px; overflow-x: hidden; }
 body.layout-mobile.layout-landscape .seat-self .hand-row { flex-wrap: nowrap; overflow-x: auto; }
-/* 副露 + 牌河 一起滚 */
+/* 副露 + 牌河 一起滚（对手：亮倒/听牌/副露/牌河 全在一个滚动区里） */
 body.layout-mobile.layout-portrait .seat-scroll {
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   touch-action: pan-y; max-height: calc(42px * 2 + 3px + 34px);
 }
-body.layout-mobile.layout-portrait .seat-opp .seat-scroll { flex: 1 1 auto; max-height: calc(42px * 5 + 5px + 38px); }
-body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list { height: calc(42px * 5 + 5px); }
+body.layout-mobile.layout-portrait .seat-opp .seat-scroll { flex: 1 1 auto; max-height: none; }
+body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list { height: auto; }
 body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: calc(42px * 2 + 2px); }
+
+/* 竖屏对手面板：标签（亮倒/听牌/副露/牌河）自己占一行，牌换到标签下方并换行；牌再小一点，一排 3 张
+   （听牌那一行只用「换行」，牌的大小不动） */
+body.layout-mobile.layout-portrait .opponents { min-height: 0; }
+body.layout-mobile.layout-portrait .seat-opp { min-height: 0; max-height: 100%; }
+/* 行不要被压扁（改了 flex 让整块内容由 .seat-scroll 统一滚） */
+body.layout-mobile.layout-portrait .seat-opp > .hand-row,
+body.layout-mobile.layout-portrait .seat-opp > .row,
+body.layout-mobile.layout-portrait .seat-opp .seat-scroll > .row { flex: 0 0 auto; }
+body.layout-mobile.layout-portrait .seat-opp .row { flex-wrap: wrap; align-items: flex-start; row-gap: 2px; }
+body.layout-mobile.layout-portrait .seat-opp .row > .row-label {
+  flex: 0 0 100%; width: 100%; margin: 0 0 1px; padding: 0 2px;
+}
+/* 副露：一组牌（碰 3 张 / 杠 4 张）不拆行；牌宽固定，杠的 4 张也要塞得进窄面板 */
+body.layout-mobile.layout-portrait .seat-opp .row.melds .meld-group { flex-wrap: nowrap; }
+body.layout-mobile.layout-portrait .seat-opp .row.melds .tile { width: 26px; height: 36px; border-radius: 4px; }
+body.layout-mobile.layout-portrait .seat-opp .row.melds .meld-group.kong .tile { width: 21px; height: 29px; }
+body.layout-mobile.layout-portrait .seat-opp .row.reveal-row .tile {
+  width: min(28px, calc((100% - 6px) / 3)); height: auto; aspect-ratio: 100 / 140; border-radius: 4px;
+}
+body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list {
+  flex: 0 0 100%; width: 100%; padding: 0 3px; gap: 1px; overflow: visible; height: auto;
+}
+body.layout-mobile.layout-portrait .seat-opp .row.discards .tile {
+  width: calc((100% - 4px) / 3); height: auto; aspect-ratio: 100 / 140; border-radius: 4px;
+}
+/* 对手面板里除 .seat-scroll 之外不要再出现第二个滚动条 */
+body.layout-mobile.layout-portrait .seat-opp .row.waits,
+body.layout-mobile.layout-portrait .seat-opp .row.discards { overflow: visible; }
+
+/* 矮屏（如 iPhone SE1 320×568）：竖向实在不够，自己那块先收缩（副露+牌河可滚），
+   保证手牌、按钮、操作历史都完整且互不重叠 */
+@media (max-height: 660px) {
+  /* 自己那块限高（限高后里面的副露+牌河才会真的收缩滚动，手牌行不受影响） */
+  body.layout-mobile.layout-portrait .seat-self { max-height: 36dvh; }
+  body.layout-mobile.layout-portrait .seat-self > .seat-scroll {
+    flex: 0 1 auto; min-height: 40px; overflow-y: auto;
+  }
+  body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: 42px; }
+  body.layout-mobile.layout-portrait .actionbar { height: 48px; min-height: 48px; }
+  body.layout-mobile.layout-portrait .actionbar .act { min-height: 40px; font-size: 14px; }
+}
 
 /* ============================================================
    触摸交互
