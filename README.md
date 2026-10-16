@@ -1,11 +1,12 @@
 # 卡五星麻将 · 单机版
 
+[![tests](https://github.com/fanqiezi/ka-wu-xing/actions/workflows/tests.yml/badge.svg)](https://github.com/fanqiezi/ka-wu-xing/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 湖北三人麻将「卡五星」（随州/襄阳一带玩法）的离线单机版：**你 + 两个电脑**，纯静态网页，双击即玩。
 
-* 🌐 **在线试玩**：<https://fanqiezi.github.io/ka-wu-xing/> （GitHub Pages，纯静态，手机浏览器也能开）
-* 📦 **仓库**：<https://github.com/fanqiezi/ka-wu-xing> · 发布包：[v1.0.0](https://github.com/fanqiezi/ka-wu-xing/releases/tag/v1.0.0)
+* 🌐 **在线试玩 / 装到桌面**：<https://fanqiezi.github.io/ka-wu-xing/> （手机浏览器打开会自动切手机版布局；「添加到主屏幕」就是个全屏 app，断网也能玩）
+* 📦 **仓库**：<https://github.com/fanqiezi/ka-wu-xing> · 发布包：[v1.1.0](https://github.com/fanqiezi/ka-wu-xing/releases/tag/v1.1.0)
 
 ![对局界面](screenshots/game.png)
 
