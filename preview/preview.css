@@ -148,7 +148,18 @@ body.landscape .hand-row.two-rows { --hand-w: 40px; --hand-h: 57px; flex-wrap: w
 .row.discards { overflow: hidden; }
 .row.discards .discards-list {
   display: flex; flex-wrap: wrap; gap: 1px; min-width: 0; flex: 1 1 auto;
-  align-content: flex-start; overflow: hidden;
+  align-content: flex-start;
+  /* 牌河超过限定行数时**可以上下滑动**（横屏上家超过两排也不会被盖住） */
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+/* 手机上滚动条是浮层，桌面上给一条细金条提示「这里能滑」 */
+.row.discards .discards-list::-webkit-scrollbar { width: 4px; }
+.row.discards .discards-list::-webkit-scrollbar-track { background: transparent; }
+.row.discards .discards-list::-webkit-scrollbar-thumb {
+  background: rgba(232, 197, 106, .45); border-radius: 2px;
 }
 .row.waits { flex-wrap: wrap; gap: 2px 3px; font-size: 10px; overflow: hidden; }
 .wait-chip { font-size: 9px; padding: 0 3px; border-radius: 4px; }
@@ -189,10 +200,10 @@ body.landscape .actionbar { grid-column: 1; grid-row: 3; justify-self: center; }
 body.landscape .table { grid-template-rows: minmax(0, 1fr) auto; }
 body.landscape .opponents { grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr); }
 body.landscape .seat-self { flex: 0 0 auto; }
-/* 横屏高度只有 390：牌背收成一行、牌河最多两行（和真机缩放后的效果一致） */
+/* 横屏高度只有 390：牌背收成一行、牌河最多两行（超出就上下滑动，和真机缩放后的效果一致） */
 body.landscape .seat-opp .hand-row { flex-wrap: nowrap; max-height: calc(var(--back-h) + 2px); }
 body.landscape .seat-opp .row.discards .discards-list { max-height: calc(var(--river-h) * 2 + 2px); }
-body.landscape .seat-self .row.discards .discards-list { max-height: calc(var(--river-h) + 2px); }
+body.landscape .seat-self .row.discards .discards-list { max-height: calc(var(--river-h) * 2 + 2px); }
 body.landscape .seat-self .row.waits { flex-wrap: nowrap; }
 body.landscape .center-info { width: 100%; }
 

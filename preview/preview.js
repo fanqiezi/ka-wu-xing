@@ -98,6 +98,12 @@
   if (qh) view.handSize = qh[1];
   var qr = /[?&]river=(full|short)/.exec(qs);
   if (qr) view.river = qr[1];
+  // ?more=1：把牌河塞满（用来验证「超过限定行数时可以上下滑动」）
+  if (/[?&]more=1/.test(qs)) {
+    D.top.discards = D.top.discards.concat(D.top.discards, D.bottom.discards.slice(0, 6));
+    D.bottom.discards = D.bottom.discards.concat(D.bottom.discards);
+    D.selfDiscards = D.selfDiscards.concat(D.selfDiscards);
+  }
   var picked = null;
   var DANGER = [TIAO(3), TIAO(6), TIAO(9)];
 
@@ -275,6 +281,12 @@
     host.appendChild(el('span', 'hint-text', '不想亮倒？直接点手牌就能出牌'));
   }
 
+  /** 牌河滑到底（最新打出的牌在最下面） */
+  function scrollRiversToBottom() {
+    var lists = document.querySelectorAll('.discards-list');
+    for (var i = 0; i < lists.length; i++) lists[i].scrollTop = lists[i].scrollHeight;
+  }
+
   function renderAll() {
     renderHud();
     renderSeat('top');
@@ -283,6 +295,7 @@
     renderCenter();
     renderLog();
     renderActions();
+    scrollRiversToBottom();
     syncDemoButtons();
   }
 
