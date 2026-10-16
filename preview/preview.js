@@ -197,7 +197,7 @@
 
     var wr = row('听牌', 'waits');
     if (isSelfLiangdao()) {
-      wr.appendChild(el('span', 'tag liangdao', '已亮倒 · 只能打刚摸的那张'));
+      wr.appendChild(el('span', 'tag liangdao', '已亮倒 · 只能摸打'));
     } else {
       wr.appendChild(el('span', 'dim', '打 ' + T.nameOf(D.drawn) + ' →'));
     }

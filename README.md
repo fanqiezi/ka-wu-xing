@@ -38,6 +38,8 @@
 手牌大小：紧凑 / 标准 / 大字 / 两行，牌河：完整 / 精简）。
 
 样张的结构与交互有冒烟测试兜底（需要 jsdom，仓库本体不带依赖）：`node tests/preview.smoke.js`
+样张截图 + 真实排版尺寸（需要 puppeteer-core + 本机 Chrome）：`node tests/shots.js`
+（另外任何一页加上 `?measure=1` 会把关键区块的尺寸直接画在页面上）
 
 ## 开始游戏界面
 

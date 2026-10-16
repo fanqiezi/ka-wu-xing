@@ -206,10 +206,11 @@ body.portrait #app {
 }
 body.portrait .sidebar { display: none; }             /* 折叠进顶部「对局记录」按钮 → 悬浮窗 */
 /* 上面两块紧贴顶部（面板按内容高度，不再被拉成一整屏空白），自己那块贴底 */
-body.portrait .table { grid-template-rows: auto minmax(0, 1fr); }
-/* 面板紧凑：靠「牌河最多几行」来定高（对手 5 行 = 210px），不把整屏撑满 */
-body.portrait .opponents { grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); }
-body.portrait .seat-self { align-self: end; }
+/* 三段式：对手栏（内容高）— 弹性空档 — 自己（内容高贴底）
+   中间那行是 1fr 空档，两块都按内容定高，所以**任何状态下都不会互相盖住** */
+body.portrait .table { grid-template-rows: auto minmax(0, 1fr) auto; }
+body.portrait .opponents { grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); grid-row: 1; }
+body.portrait .seat-self { grid-row: 3; align-self: end; }
 /* 四个方框和中央信息要上下排（之前漏了 flex-direction，两者被挤成一行重叠） */
 body.portrait .center-col {
   flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px;
@@ -227,11 +228,13 @@ body.portrait .center-meta { font-size: 10px; }
 body.portrait .actionbar { justify-self: stretch; }
 body.portrait .actionbar .hint-text { display: none; }   /* 竖屏放不下，藏掉 */
 body.portrait .actionbar .act { min-height: 50px; font-size: 15px; }
-body.portrait .seat-self .row.waits { flex-wrap: nowrap; }
-/* 面板紧凑：对手牌河最多 6 行、自己 3 行，都不会撑满整屏，中间留出桌面 */
+body.portrait .seat-self .row.waits { flex-wrap: nowrap; overflow: hidden; }
+/* 听牌行里每一个小片段都不许换行（否则亮倒那行会撑成两行，把下面的手牌挤下去） */
+body.portrait .seat-self .row.waits > * { white-space: nowrap; }
+/* 面板紧凑：对手牌河最多 5 行、自己 2 行 —— 用「行数」定高，不用百分比（网格里算不准） */
 body.portrait .seat-opp .row.discards { flex: 0 0 auto; }
-body.portrait .seat-opp .row.discards .discards-list { max-height: calc(var(--river-h) * 6 + 6px); overflow: hidden; }
-body.portrait .seat-self .row.discards .discards-list { max-height: calc(var(--river-h) * 3 + 3px); overflow: hidden; }
+body.portrait .seat-opp .row.discards .discards-list { max-height: calc(var(--river-h) * 5 + 5px); overflow: hidden; }
+body.portrait .seat-self .row.discards .discards-list { max-height: calc(var(--river-h) * 2 + 2px); overflow: hidden; }
 body.portrait .seat-self .row.waits { padding: 3px 6px; }
 
 /* ============================================================

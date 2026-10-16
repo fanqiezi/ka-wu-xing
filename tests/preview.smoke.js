@@ -191,7 +191,7 @@ async function check(name, file) {
   test('切「我亮倒」：听张锁死、手牌变灰、只有刚摸那张可点', () => {
     click(win, $('[data-view="state:selfLd"]'));
     const waits = $('[data-opp="self"] .row.waits');
-    assert(/已亮倒/.test(waits.textContent) && /只能打刚摸的那张/.test(waits.textContent),
+    assert(/已亮倒/.test(waits.textContent) && /只能摸打/.test(waits.textContent),
       '听牌行应提示已亮倒只能摸打，实际：' + waits.textContent);
     eq(count('#mHand .tile.disabled'), 13, '13 张手牌应变灰');
     const drawn = $('#mHand .tile.just-drawn');
