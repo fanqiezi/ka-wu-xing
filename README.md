@@ -59,6 +59,8 @@ index.html?layout=desktop     强制电脑版（手机上想用桌面版时）
 
 PWA 自检：`node tests/pwa-check.js`（本地起 http 服务，用真实浏览器验证 SW 激活、manifest、
 四个图标、预缓存里有没有游戏外壳，然后**真的断网重开一局**）。图标用 `node tests/make-icons.js` 重新生成。
+线上自检：`node tests/live-check.js`（直接打开 <https://fanqiezi.github.io/ka-wu-xing/> 验证 SW 激活、
+manifest 在线、手机版布局生效，并**断网重开后竖屏/横屏都还能开局**）。
 
 要看真实效果：手机上直接开 <https://fanqiezi.github.io/ka-wu-xing/>，或用
 `node tests/shots-real.js`（puppeteer + 本机 Chrome）在 390×844 / 844×390 / 1280×800 三种尺寸下截图 + 自检
@@ -312,6 +314,7 @@ ka-wu-xing/
 │  ├─ shots-real.js      真实游戏在 390×844 / 844×390 / 1280×800 下截图 + 自检
 │  ├─ shots-sizes.js     9 种真机尺寸自检（含「对手亮倒」最坏情况）
 │  ├─ pwa-check.js       PWA 自检：SW 注册 / manifest / 预缓存 / **断网还能开局**
+│  ├─ live-check.js      线上站点（GitHub Pages）端到端自检：SW 激活 + **断网竖屏/横屏都能玩**
 │  ├─ make-icons.js      生成 PWA 图标（无头 Chrome 渲染）
 │  ├─ preview.smoke.js   手机版样张的冒烟测试（jsdom）
 │  ├─ shots.js           样张截图 + 尺寸
