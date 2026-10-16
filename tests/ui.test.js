@@ -802,6 +802,97 @@ function boot(seed) {
   });
 
   /* ------------------------------------------------------------------ */
+  group('手机版布局（竖屏 / 横屏）');
+
+  await atest('setLayout：竖屏把四个方框搬进中间空当，横屏/桌面搬回顶栏', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    if (g) g.stop();
+    const body = dom.byId['body'] || win.document.body;
+
+    ui.setLayout('portrait');
+    assert.strictEqual(ui.getLayout(), 'portrait', '布局应切到竖屏');
+    assert.ok(dom.hasClass(body, 'layout-mobile') && dom.hasClass(body, 'layout-portrait'),
+      'body 应带 layout-mobile layout-portrait，实际 "' + body.className + '"');
+    assert.strictEqual(dom.byId['hud'].parentNode, dom.byId['center-col'],
+      '竖屏：四个方框应搬进中间空当 center-col');
+
+    ui.setLayout('landscape');
+    assert.ok(dom.hasClass(body, 'layout-landscape') && !dom.hasClass(body, 'layout-portrait'),
+      'body 应切成 layout-landscape');
+    assert.strictEqual(dom.byId['hud'].parentNode, dom.byId['topbar'], '横屏：四个方框应回到顶栏');
+
+    ui.setLayout('desktop');
+    assert.strictEqual(ui.getLayout(), 'desktop');
+    assert.ok(!dom.hasClass(body, 'layout-mobile'), '桌面版 body 不该有任何 layout class');
+    assert.strictEqual(dom.byId['hud'].parentNode, dom.byId['topbar']);
+  });
+
+  await atest('手机版二次点击出牌：第一次选中、第二次才真的打出', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    ui.setLayout('portrait');
+    const p0 = g.players[0];
+    p0.hand = H('123456789t 123b 11b');
+    p0.melds = [];
+    p0.lastDraw = null;
+    const p = g.ask({
+      kind: 'discard', seat: 0, locked: false,
+      tiles: p0.hand.slice(), allowed: p0.hand.slice(), banned: []
+    });
+    const tiles = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'clickable'));
+    assert.ok(tiles.length > 0, '轮到自己出牌时手牌应可点');
+    const t = tiles[0];
+    const code = Number(t.dataset.tile);
+
+    t.click();                                    // 第一次：只选中，不打出
+    assert.ok(dom.hasClass(t, 'picked'), '第一次点应抬起（picked）');
+    assert.strictEqual(ui.getMobilePicked(), t, '应记住选中的这张');
+    assert.ok(dom.hasClass(dom.byId['confirm-bar'], 'show'), '应出现顶部确认条');
+    const barBtns = dom.findAll(dom.byId['confirm-bar'], n => n.tagName === 'BUTTON');
+    assert.ok(barBtns.some(b => b.textContent === '打出'), '确认条应有「打出」按钮');
+    assert.ok(barBtns.some(b => b.textContent === '取消'), '确认条应有「取消」按钮');
+    assert.ok(g.pending, '第一次点不该真的出牌');
+
+    t.click();                                    // 第二次：真打
+    await p;
+    assert.ok(!dom.hasClass(dom.byId['confirm-bar'], 'show'), '打出后确认条应消失');
+    // 这一问被消费掉 = 确实提交了出牌（引擎那边的落子由 game.test.js 覆盖）
+    assert.ok(!g.pending, '第二次点之后应已提交出牌');
+    assert.strictEqual(ui.getMobilePicked(), null, '选中态应清掉');
+  });
+
+  await atest('手机版长按手牌：显示「打这张听什么」，且那一下不算点选', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    ui.setLayout('portrait');
+    const p0 = g.players[0];
+    p0.hand = H('123456789t 123b 11b');
+    p0.melds = [];
+    p0.lastDraw = null;
+    const p = g.ask({
+      kind: 'discard', seat: 0, locked: false,
+      tiles: p0.hand.slice(), allowed: p0.hand.slice(), banned: []
+    });
+    const t = dom.findAll(dom.byId['seat-0'], n => dom.hasClass(n, 'clickable'))[0];
+    t.dispatchEvent({ type: 'pointerdown', target: t });
+    await sleep(420);
+    const info = dom.byId['tile-info'];
+    assert.ok(dom.hasClass(info, 'show'), '长按后应出现信息条');
+    assert.ok(info.innerHTML.length > 0, '信息条应有内容：' + info.innerHTML);
+
+    t.click();                                    // 长按结束的那一下不该出牌
+    assert.ok(g.pending, '长按之后紧接着的点击不该出牌');
+    assert.ok(!dom.hasClass(t, 'picked'), '也不该被选中');
+
+    g.submit({ type: 'discard', tile: Number(t.dataset.tile) });
+    await p;
+    ui.setLayout('desktop');                      // 还原，别影响别的用例
+  });
+
+  /* ------------------------------------------------------------------ */
   console.log('\n----------------------------------------');
   console.log('通过 ' + passed + ' 项，失败 ' + failed + ' 项');
   if (failed) {

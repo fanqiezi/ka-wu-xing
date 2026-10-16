@@ -127,6 +127,33 @@
       if (e.target === el.modalHost && !modalPersistent) closeModal();
     });
 
+    // 手机版：顶部确认条（二次点击出牌）
+    var cbar = $('confirm-bar');
+    if (cbar) {
+      cbar.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-confirm]') : null;
+        if (!b) return;
+        var tile = mobilePicked && mobilePicked.dataset ? Number(mobilePicked.dataset.tile) : null;
+        if (b.dataset.confirm === 'go') {
+          clearMobilePick();
+          if (tile !== null && !isNaN(tile)) answer({ type: 'discard', tile: tile });
+        } else {
+          clearMobilePick();
+        }
+      });
+    }
+
+    // 手机版布局：自动判定 + 转屏/改窗口时重新判定
+    applyLayout();
+    if (window.addEventListener) {
+      var relayout = function () {
+        clearTimeout(relayout._t);
+        relayout._t = setTimeout(function () { applyLayout(); }, 150);
+      };
+      window.addEventListener('resize', relayout);
+      window.addEventListener('orientationchange', relayout);
+    }
+
     // 先停在开始界面，不自动开局
     showStartScreen();
   }
@@ -261,14 +288,123 @@
    * 如果当前正在问「要不要亮倒/杠」，就先把那一问按「过」处理，
    * 然后等出牌询问到了直接把这张打出去 —— 不用先点「过」再出牌。
    */
-  function pickTile(tile) {
+  function pickTile(tile, node) {
     if (!pendingAsk) return;
     if (pendingAsk.kind === 'self') {
       queuedDiscard = tile;
       answer({ type: 'pass' });
       return;
     }
+    // 手机版：二次点击出牌（第一次选中、第二次才真打），防误触
+    if (isMobileLayout()) { mobilePick(tile, node); return; }
     answer({ type: 'discard', tile: tile });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 手机版布局：桌面版完全不受影响（body 上不加任何 class，行为不变）   */
+  /* ------------------------------------------------------------------ */
+
+  var layoutMode = 'desktop';        // 'desktop' | 'portrait' | 'landscape'
+  var mobilePicked = null;           // 手机版二次点击出牌：已经选中的那张
+
+  function isMobileLayout() { return layoutMode !== 'desktop'; }
+
+  /** 判断该用哪套布局：优先 ?layout=，其次看指针类型与屏幕大小 */
+  function detectLayoutMode() {
+    var qs = (window.location && window.location.search) || '';
+    var forced = /[?&]layout=(desktop|mobile|portrait|landscape)/.exec(qs);
+    var f = forced ? forced[1] : '';
+    if (f === 'desktop') return 'desktop';
+    var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    var w = window.innerWidth || 0, h = window.innerHeight || 0;
+    var small = (w > 0 && w <= 820) || (h > 0 && h <= 560);
+    if (f === 'portrait') return 'portrait';
+    if (f === 'landscape') return 'landscape';
+    if (f === 'mobile') return h >= w ? 'portrait' : 'landscape';
+    if (!coarse && !small) return 'desktop';
+    return h >= w ? 'portrait' : 'landscape';
+  }
+
+  /** 竖屏：把四个方框搬到中间空当；其它布局搬回顶栏 */
+  function placeHud(mode) {
+    var hud = $('hud'), centerCol = $('center-col'), topbar = $('topbar'), topbtns = document.querySelector
+      ? document.querySelector('.topbtns') : null;
+    if (!hud || !centerCol || !topbar) return;
+    if (mode === 'portrait') {
+      if (hud.parentNode !== centerCol && centerCol.insertBefore) {
+        centerCol.insertBefore(hud, centerCol.firstChild || null);
+      }
+    } else if (hud.parentNode !== topbar && topbar.insertBefore) {
+      topbar.insertBefore(hud, topbtns || null);
+    }
+  }
+
+  /** 切换布局：加 body class（CSS 全靠它）+ 搬四个方框 + 重渲染 */
+  function applyLayout(mode) {
+    layoutMode = mode || detectLayoutMode();
+    if (document.body && document.body.classList) {
+      document.body.classList.remove('layout-mobile', 'layout-portrait', 'layout-landscape');
+      if (layoutMode !== 'desktop') {
+        document.body.classList.add('layout-mobile');
+        document.body.classList.add(layoutMode === 'portrait' ? 'layout-portrait' : 'layout-landscape');
+      }
+    }
+    clearMobilePick();
+    placeHud(layoutMode);
+    if (game) render();
+  }
+
+  /** 清掉手机版的选中态与确认条 */
+  function clearMobilePick() {
+    if (mobilePicked && mobilePicked.classList) mobilePicked.classList.remove('picked');
+    mobilePicked = null;
+    var bar = $('confirm-bar');
+    if (bar && bar.classList) { bar.classList.remove('show'); bar.innerHTML = ''; }
+  }
+
+  /** 手机版长按：显示这张牌的说明（桌面版靠 title 悬停，手机没有 hover） */
+  function showTileInfo(node, tile) {
+    var box = $('tile-info');
+    if (!box || !node) return;
+    var code = tile !== undefined ? tile : Number(node.dataset ? node.dataset.tile : NaN);
+    var name = isNaN(code) ? '' : T.nameOf(code) + ' —— ';
+    box.innerHTML = '<b>' + name + '</b>' + (node.title || '');
+    box.classList.add('show');
+    clearTimeout(showTileInfo._t);
+    showTileInfo._t = setTimeout(function () { box.classList.remove('show'); }, 3200);
+  }
+
+  /** 手机版二次点击出牌：第一次点=选中（抬起+确认条），第二次点=打出 */
+  function mobilePick(tile, node) {
+    if (mobilePicked && node && mobilePicked === node) {
+      clearMobilePick();
+      answer({ type: 'discard', tile: tile });
+      return;
+    }
+    clearMobilePick();
+    if (node) {
+      node.classList.add('picked');
+      mobilePicked = node;
+    }
+    var bar = $('confirm-bar');
+    if (!bar) { answer({ type: 'discard', tile: tile }); return; }
+    bar.innerHTML = '';
+    var txt = document.createElement('span');
+    txt.textContent = '已选 ' + T.nameOf(tile) + '（' + (node && node.title ? node.title : '再点一次打出') + '）';
+    bar.appendChild(txt);
+    var sp = document.createElement('span');
+    sp.className = 'sp';
+    bar.appendChild(sp);
+    var go = document.createElement('button');
+    go.textContent = '打出';
+    go.dataset.confirm = 'go';
+    var no = document.createElement('button');
+    no.className = 'ghost';
+    no.textContent = '取消';
+    no.dataset.confirm = 'cancel';
+    bar.appendChild(go);
+    bar.appendChild(no);
+    bar.classList.add('show');
   }
 
   /* ------------------------------------------------------------------ */
@@ -280,6 +416,7 @@
     var d = document.createElement('div');
     d.className = 'tile ' + size;
     if (opts.cls) d.className += ' ' + opts.cls;
+    d.dataset.tile = String(tile);
     d.title = opts.title || T.nameOf(tile);
     // 大牌（玩家手牌）额外显示数字角标，方便快速读数
     d.innerHTML = T.faceSvg(tile, { numeral: size === 'lg' || size === 'md' });
@@ -291,7 +428,24 @@
     }
     if (opts.onClick) {
       d.classList.add('clickable');
-      d.addEventListener('click', opts.onClick);
+      // 手机版：长按 380ms 看这张牌的说明（相当于桌面版的悬停提示）
+      if (isMobileLayout()) {
+        var lp = null;
+        d.addEventListener('pointerdown', function () {
+          clearTimeout(lp);
+          lp = setTimeout(function () {
+            d._suppressClick = true;
+            showTileInfo(d, tile);
+          }, 380);
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+          d.addEventListener(ev, function () { clearTimeout(lp); });
+        });
+      }
+      d.addEventListener('click', function (e) {
+        if (d._suppressClick) { d._suppressClick = false; return; }   // 长按结束的那一下不算点选
+        opts.onClick.call(d, e);
+      });
     }
     return d;
   }
@@ -541,7 +695,7 @@
             ? '打 ' + T.nameOf(t) + ' → 听 ' + describeWaits(info) +
               (info.isPitHu ? '（屁胡，只能自摸）' : '（' + info.fan + ' 倍牌型，可捉炮）')
             : null,
-          onClick: (canPick && !dis) ? function () { pickTile(t); } : null
+          onClick: (canPick && !dis) ? function () { pickTile(t, this); } : null
         };
         if (danger) {
           opts.cls = (opts.cls ? opts.cls + ' ' : '') + 'dangerous';
@@ -568,7 +722,7 @@
             ? '打 ' + T.nameOf(drawn) + ' → 听 ' + describeWaits(info2) +
               (info2.isPitHu ? '（屁胡，只能自摸）' : '（' + info2.fan + ' 倍牌型，可捉炮）')
             : null),
-        onClick: (canPick && !dis2) ? function () { pickTile(drawn); } : null
+        onClick: (canPick && !dis2) ? function () { pickTile(drawn, this); } : null
       }));
     }
     // 副露与牌河
@@ -586,11 +740,15 @@
     lab2.className = 'row-label';
     lab2.textContent = '牌河';
     discRow.appendChild(lab2);
+    // 牌河里的牌包一层 .discards-list：手机版靠它做「限高 + 上下滑动」
+    var discList = document.createElement('div');
+    discList.className = 'discards-list';
     p.discards.forEach(function (t, i) {
       var newest = state.lastDiscard && state.lastDiscard.seat === seat &&
         i === p.discards.length - 1;
-      discRow.appendChild(makeTile(t, size, { cls: newest ? 'newest' : '' }));
+      discList.appendChild(makeTile(t, size, { cls: newest ? 'newest' : '' }));
     });
+    discRow.appendChild(discList);
 
     if (isSelf) {
       // 听牌提示放在手牌正上方；摸完牌后直接显示「打哪张听什么」
@@ -1169,6 +1327,13 @@
     init: init,
     settings: settings,
     getGame: function () { return game; },
-    getPending: function () { return pendingAsk; }
+    getPending: function () { return pendingAsk; },
+    // 布局：桌面版不加 class；手机版给 body 加 layout-mobile + 方向
+    getLayout: function () { return layoutMode; },
+    setLayout: function (mode) { applyLayout(mode); return layoutMode; },
+    detectLayout: detectLayoutMode,
+    // 手机版二次点击出牌的选中态（测试用）
+    getMobilePicked: function () { return mobilePicked; },
+    clearMobilePick: clearMobilePick
   };
 })();

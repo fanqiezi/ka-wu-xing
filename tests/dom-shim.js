@@ -17,8 +17,16 @@ function createDom(htmlSource) {
     this.hidden = false;
     this.scrollTop = 0;
     this.scrollHeight = 0;
+    this.dataset = {};
     this.style = {};
   }
+
+  /** 极简 closest：只认自己身上有没有这个 class（测试够用） */
+  Node.prototype.closest = function (sel) {
+    if (!sel) return null;
+    var cls = String(sel).replace(/^\./, '');
+    return this._classes.has(cls) ? this : null;
+  };
 
   Object.defineProperty(Node.prototype, 'className', {
     get: function () { return Array.from(this._classes).join(' '); },
@@ -67,6 +75,18 @@ function createDom(htmlSource) {
     n.parentNode = this;
     this.children.push(n);
     return n;
+  };
+  Node.prototype.insertBefore = function (n, ref) {
+    if (n.parentNode) n.parentNode.removeChild(n);
+    n.parentNode = this;
+    var i = ref ? this.children.indexOf(ref) : -1;
+    if (i < 0) this.children.push(n);
+    else this.children.splice(i, 0, n);
+    return n;
+  };
+  Node.prototype.dispatchEvent = function (e) {
+    var arr = this._listeners[e && e.type] || [];
+    for (var i = 0; i < arr.length; i++) arr[i](e);
   };
   Node.prototype.removeChild = function (n) {
     var i = this.children.indexOf(n);

@@ -147,6 +147,11 @@ button { font-family: inherit; }
 .row { display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-end; }
 .row.melds { min-height: 34px; }
 .row.discards { min-height: 34px; }
+/* 牌河里的一层包裹（手机版靠它做限高 + 上下滑动；桌面版表现与原来一致） */
+.row.discards .discards-list {
+  display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-start;
+  flex: 1 1 auto; min-width: 0;
+}
 .row-label { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; margin-right: 4px; align-self: center; }
 
 .hand-row { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; padding: 4px 0; min-height: 84px; }

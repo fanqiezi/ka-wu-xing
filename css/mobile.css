@@ -1,0 +1,276 @@
+/* ============================================================
+   手机版布局（在样张 preview/ 上评审通过的那套）
+   用法：ui.js 按 屏幕/指针 类型给 <body> 加
+        .layout-mobile .layout-portrait   （竖屏：四个方框进中间空当、对局记录收进按钮）
+        .layout-mobile .layout-landscape  （横屏：等同电脑版，只是整体缩小）
+   桌面版不加任何 class，外观与行为完全不变。
+   这里只改样式，不动引擎；牌面尺寸按「座位 + 尺寸类」覆盖。
+   ============================================================ */
+
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+body.layout-mobile {
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  height: 100dvh;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+
+/* ---------- 手机上一切尽量不换行 ---------- */
+body.layout-mobile .topbar,
+body.layout-mobile .brand,
+body.layout-mobile .hud,
+body.layout-mobile .hud-item,
+body.layout-mobile .topbtns,
+body.layout-mobile .btn,
+body.layout-mobile .seat-head,
+body.layout-mobile .row-label,
+body.layout-mobile .turn-indicator,
+body.layout-mobile .center-meta,
+body.layout-mobile .wait-chip,
+body.layout-mobile .sidebar-head,
+body.layout-mobile .act { white-space: nowrap; }
+
+/* ============================================================
+   牌面尺寸：手机版按「区域」覆盖尺寸类（.lg 自己 / .sm 对手 / .xs 听牌小牌 / .md 中央）
+   ============================================================ */
+body.layout-mobile .tile { border-radius: 5px; }
+body.layout-mobile.layout-portrait .seat-opp .hand-row .tile { width: 13px; height: 18px; border-radius: 3px; }
+body.layout-mobile.layout-landscape .seat-opp .hand-row .tile { width: 11px; height: 15px; border-radius: 3px; }
+body.layout-mobile.layout-portrait .seat-opp .row.melds .tile,
+body.layout-mobile.layout-portrait .seat-opp .row.discards .tile { width: 30px; height: 42px; border-radius: 4px; }
+body.layout-mobile.layout-portrait .seat-opp .row.reveal-row .tile { width: 26px; height: 36px; border-radius: 4px; }
+body.layout-mobile.layout-landscape .seat-opp .row.melds .tile,
+body.layout-mobile.layout-landscape .seat-opp .row.discards .tile { width: 19px; height: 27px; border-radius: 4px; }
+body.layout-mobile.layout-landscape .seat-opp .row.reveal-row .tile { width: 16px; height: 23px; border-radius: 4px; }
+body.layout-mobile.layout-portrait .seat-self .row.melds .tile,
+body.layout-mobile.layout-portrait .seat-self .row.discards .tile { width: 30px; height: 42px; border-radius: 4px; }
+body.layout-mobile.layout-landscape .seat-self .row.melds .tile,
+body.layout-mobile.layout-landscape .seat-self .row.discards .tile { width: 19px; height: 27px; border-radius: 4px; }
+body.layout-mobile .row.waits .tile { width: 18px; height: 25px; border-radius: 3px; }
+body.layout-mobile .center-tiles .tile { width: 26px; height: 36px; border-radius: 4px; }
+
+/* 自己的手牌：竖屏两行（7+7，一张 50x70）／横屏单行（32x46） */
+body.layout-mobile.layout-portrait .seat-self .hand-row .tile { width: 50px; height: 70px; border-radius: 6px; }
+body.layout-mobile.layout-landscape .seat-self .hand-row .tile { width: 32px; height: 46px; border-radius: 5px; }
+
+/* ============================================================
+   通用区块的手机版尺寸（覆盖电脑版留的固定最小高度）
+   ============================================================ */
+body.layout-mobile #app { height: 100%; gap: 4px; padding: 0; }
+body.layout-mobile .topbar { gap: 6px; padding: 3px 6px; border-radius: 9px; }
+body.layout-mobile .brand { gap: 5px; min-width: 0; }
+body.layout-mobile .brand .logo { width: 22px; height: 22px; font-size: 13px; border-radius: 6px; }
+body.layout-mobile .brand h1 { font-size: 12px; letter-spacing: 1px; }
+body.layout-mobile .brand .sub { display: none; }          /* 去掉第二行，顶部不换行 */
+body.layout-mobile .hud { display: flex; gap: 3px; margin-left: auto; flex-wrap: nowrap; }
+body.layout-mobile .hud-item { min-width: 0; padding: 1px 6px; border-radius: 6px; text-align: center; }
+body.layout-mobile .hud-item label { display: inline; font-size: 9px; letter-spacing: 0; margin-right: 2px; }
+body.layout-mobile .hud-item b { font-size: 12px; }
+body.layout-mobile .topbtns { gap: 3px; }
+body.layout-mobile .topbtns .btn { padding: 3px 7px; font-size: 10.5px; border-radius: 6px; line-height: 1.5; }
+
+body.layout-mobile .table { gap: 4px; }
+body.layout-mobile .opponents { gap: 4px; }
+body.layout-mobile .seat {
+  border-radius: 10px; padding: 3px 5px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 2px; min-height: 0;
+}
+body.layout-mobile .seat-head { font-size: 10.5px; gap: 4px; }
+body.layout-mobile .seat-head .tag { font-size: 9px; padding: 0 4px; border-radius: 4px; }
+body.layout-mobile .seat-head .score { font-size: 11px; }
+/* 电脑版给自己座位留了 padding-bottom: 80px（给固定操作栏让位），手机版操作栏在流内 */
+body.layout-mobile .seat.seat-self { padding: 3px 5px; }
+
+body.layout-mobile .hand-row {
+  display: flex; gap: 1px; align-items: flex-end; padding: 0; min-height: 0;
+  overflow-x: auto; overflow-y: hidden;
+}
+body.layout-mobile .hand-row .gap { width: 6px; }
+body.layout-mobile .seat-self .hand-row { justify-content: flex-start; }
+body.layout-mobile .seat-opp .hand-row { flex-wrap: wrap; row-gap: 2px; overflow: hidden; }
+
+body.layout-mobile .row { display: flex; align-items: flex-start; gap: 3px; margin: 0; flex-wrap: nowrap; }
+body.layout-mobile .row-label {
+  font-size: 9px; flex: 0 0 auto; letter-spacing: 0; margin-right: 3px;
+  align-self: flex-start; padding-top: 2px;
+}
+/* 电脑版给这几行留了固定最小高度（34/34/40/84px），手机版全部压掉 */
+body.layout-mobile .row.melds,
+body.layout-mobile .row.discards,
+body.layout-mobile .row.waits,
+body.layout-mobile .hand-row { min-height: 0; }
+body.layout-mobile .seat > .seat-head,
+body.layout-mobile .seat > .hand-row,
+body.layout-mobile .seat > .row { flex: 0 0 auto; }
+body.layout-mobile .seat > .row.discards { flex: 0 1 auto; }
+body.layout-mobile .seat-self .row { justify-content: flex-start; }
+body.layout-mobile .meld-group { padding: 1px; gap: 1px; margin-right: 2px; border-radius: 4px; }
+body.layout-mobile .seat-self .row.waits { background: rgba(255, 255, 255, .045); padding: 2px 6px; align-items: center; }
+body.layout-mobile .wait-chip { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; font-size: 9.5px; }
+body.layout-mobile .wait-chip .cnt { font-size: 9px; }
+body.layout-mobile .row.waits { overflow: hidden; }
+
+/* 牌河：超过限定行数时**上下滑动**（横屏上家第 3 排不会被盖住） */
+body.layout-mobile .row.discards { overflow: hidden; }
+body.layout-mobile .row.discards .discards-list {
+  display: flex; flex-wrap: wrap; gap: 1px; min-width: 0; flex: 1 1 auto;
+  align-content: flex-start;
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+body.layout-mobile .row.discards .discards-list::-webkit-scrollbar { width: 4px; }
+body.layout-mobile .row.discards .discards-list::-webkit-scrollbar-thumb {
+  background: rgba(232, 197, 106, .45); border-radius: 2px;
+}
+/* 亮倒行：对手公开的牌 + 一行小字听牌（手机面板窄，chip 放不下） */
+body.layout-mobile .row.reveal-row { flex-wrap: wrap; row-gap: 2px; align-items: center; }
+body.layout-mobile .opp-waits .waits-text { font-size: 9px; line-height: 1.3; color: #b6f0d0; }
+
+body.layout-mobile .center-col { display: flex; align-items: center; justify-content: center; min-height: 0; }
+body.layout-mobile .center-info { padding: 5px; border-radius: 10px; }
+body.layout-mobile .turn-indicator { font-size: 10.5px; min-height: 0; }
+body.layout-mobile .center-tiles { min-height: 0; margin: 2px 0; gap: 3px; }
+body.layout-mobile .center-meta { font-size: 9px; min-height: 0; }
+
+body.layout-mobile .sidebar { border-radius: 10px; padding: 4px 6px; }
+body.layout-mobile .sidebar-head { font-size: 10.5px; padding-bottom: 2px; }
+body.layout-mobile .log { font-size: 9.5px; line-height: 1.5; }
+
+body.layout-mobile .actionbar {
+  position: static; left: auto; bottom: auto; transform: none;
+  gap: 6px; padding: 4px; border-radius: 10px; justify-self: center;
+}
+body.layout-mobile .actionbar .act {
+  min-width: 0; flex: 1 1 0; min-height: 46px; padding: 4px 2px;
+  font-size: 14px; letter-spacing: 1px; border-radius: 9px;
+}
+body.layout-mobile .actionbar .act small { display: block; font-size: 8.5px; opacity: .85; font-weight: 400; }
+body.layout-mobile .actionbar .hint { font-size: 9px; }
+
+/* ============================================================
+   横屏 844×390：等同电脑版（顶栏四框+按钮 / 上家·中央·下家 / 你 / 右侧记录栏）
+   ============================================================ */
+body.layout-mobile.layout-landscape #app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.layout-mobile.layout-landscape .topbar { grid-column: 1 / -1; }
+body.layout-mobile.layout-landscape .table { grid-column: 1; grid-row: 2; grid-template-rows: minmax(0, 1fr) auto; }
+body.layout-mobile.layout-landscape .opponents { grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr); }
+body.layout-mobile.layout-landscape .sidebar {
+  grid-column: 2; grid-row: 2 / span 2;
+  /* 电脑版在 ≤1080px 的媒体查询里把侧栏隐藏了，横屏手机版要显式恢复 */
+  display: flex; flex-direction: column;
+}
+body.layout-mobile.layout-landscape .actionbar { grid-column: 1; grid-row: 3; }
+body.layout-mobile.layout-landscape .seat-self { flex: 0 0 auto; }
+body.layout-mobile.layout-landscape .seat-opp .hand-row { flex-wrap: nowrap; max-height: calc(15px + 2px); }
+body.layout-mobile.layout-landscape .seat-opp .row.discards .discards-list { max-height: calc(27px * 2 + 2px); }
+body.layout-mobile.layout-landscape .seat-self .row.discards .discards-list { max-height: calc(27px * 2 + 2px); }
+body.layout-mobile.layout-landscape .seat-self .row.waits { flex-wrap: nowrap; }
+
+/* ============================================================
+   竖屏 390×844：四个方框进中间空当、对局记录收进按钮、手牌两行
+   ============================================================ */
+body.layout-mobile.layout-portrait #app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.layout-mobile.layout-portrait .topbar { grid-row: 1; }
+/* 三段式：对手栏（内容高）— 弹性空档 — 自己（内容高贴底），任何状态都不会互相盖住 */
+body.layout-mobile.layout-portrait .table {
+  grid-row: 2; display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.layout-mobile.layout-portrait .opponents {
+  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr); grid-row: 1;
+}
+body.layout-mobile.layout-portrait .seat-self { grid-row: 3; align-self: end; }
+body.layout-mobile.layout-portrait .sidebar { display: none; }   /* 收进顶部「对局记录」按钮 → 悬浮窗 */
+body.layout-mobile.layout-portrait .actionbar { grid-row: 3; justify-self: stretch; }
+body.layout-mobile.layout-portrait .actionbar .act { min-height: 50px; font-size: 15px; }
+body.layout-mobile.layout-portrait .actionbar .hint { display: none; }
+/* 四个方框放到中间上方的空当（2×2） */
+body.layout-mobile.layout-portrait .center-col {
+  flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px;
+}
+body.layout-mobile.layout-portrait .center-col .hud {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; margin: 0; width: 100%;
+}
+body.layout-mobile.layout-portrait .center-col .hud-item { padding: 3px; }
+body.layout-mobile.layout-portrait .center-col .hud-item label { display: block; font-size: 9px; margin: 0; }
+body.layout-mobile.layout-portrait .center-col .hud-item b { font-size: 14px; }
+body.layout-mobile.layout-portrait .center-info { padding: 7px 5px; }
+body.layout-mobile.layout-portrait .turn-indicator { font-size: 12px; }
+body.layout-mobile.layout-portrait .center-meta { font-size: 10px; }
+/* 自己那块：副露/牌河/听牌/两行手牌 */
+body.layout-mobile.layout-portrait .seat-self .row.waits { flex-wrap: nowrap; padding: 3px 6px; }
+body.layout-mobile.layout-portrait .seat-self .row.waits > * { white-space: nowrap; }
+body.layout-mobile.layout-portrait .seat-self .hand-row { flex-wrap: wrap; row-gap: 4px; overflow-x: hidden; }
+body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list { height: calc(42px * 5 + 5px); }
+body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: calc(42px * 2 + 2px); }
+
+/* ============================================================
+   触摸交互
+   ============================================================ */
+body.layout-mobile .tile.picked {
+  transform: translateY(-10px);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, .5), 0 0 0 2px rgba(232, 197, 106, .85);
+  z-index: 6;
+}
+/* 触摸设备上不要 :hover 抬起（手指点一下会「粘住」） */
+@media (hover: none) {
+  body.layout-mobile .tile.clickable:hover {
+    transform: none; box-shadow: 0 2px 0 #c9c1ad, 0 3px 5px rgba(0, 0, 0, .3);
+  }
+  body.layout-mobile .tile.clickable:active { transform: none; }
+}
+/* 二次点击出牌的顶部确认条（放在顶栏下面，别盖住标题和按钮） */
+#confirm-bar {
+  position: fixed; left: 6px; right: 6px; top: calc(38px + var(--safe-t));
+  z-index: 60; display: none; align-items: center; gap: 8px;
+  background: linear-gradient(180deg, rgba(232, 197, 106, .97), rgba(216, 169, 63, .97));
+  color: #2a1c00; border-radius: 9px; padding: 6px 9px;
+  font-size: 11.5px; font-weight: 700; box-shadow: 0 8px 20px rgba(0, 0, 0, .45);
+}
+#confirm-bar.show { display: flex; }
+#confirm-bar .sp { flex: 1 1 auto; }
+#confirm-bar button {
+  border: 0; border-radius: 7px; padding: 4px 9px; font-size: 11.5px; font-weight: 700;
+  background: #2a1c00; color: var(--gold);
+}
+#confirm-bar button.ghost { background: rgba(42, 28, 0, .2); color: #2a1c00; }
+/* 长按看「打这张听什么」的信息条 */
+#tile-info {
+  position: fixed; left: 6px; right: 6px; bottom: calc(6px + var(--safe-b));
+  z-index: 60; display: none;
+  background: rgba(4, 22, 17, .97); border: 1px solid var(--panel-line);
+  border-radius: 9px; padding: 7px 9px; font-size: 11px; color: var(--text);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .5); line-height: 1.55;
+}
+#tile-info.show { display: block; }
+#tile-info b { color: var(--gold); }
+
+/* 弹窗：手机上做成底部抽屉（记录/设置/规则都是长内容，内部滚动） */
+body.layout-mobile .modal-host { align-items: flex-end; padding: 0; }
+body.layout-mobile .modal-host .modal {
+  width: 100%; max-width: none; max-height: 90dvh; overflow-y: auto;
+  border-radius: 16px 16px 0 0; border-bottom: 0;
+  padding: 12px 12px calc(12px + var(--safe-b));
+}
+body.layout-mobile .modal-host .modal h2 { font-size: 15px; }
+body.layout-mobile .modal-host .modal-actions { position: sticky; bottom: 0; background: inherit; }
+body.layout-mobile .modal-host .modal-actions .btn { flex: 1 1 0; min-height: 44px; }
+body.layout-mobile .modal-host .pay-table { font-size: 10.5px; }
+body.layout-mobile .modal-host .chart-wrap { height: 110px; }

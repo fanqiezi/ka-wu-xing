@@ -2,14 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>卡五星麻将 · 单机版</title>
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
 <div id="app">
 
-  <header class="topbar">
+  <header class="topbar" id="topbar">
     <div class="brand">
       <span class="logo">中</span>
       <div>
@@ -17,7 +18,7 @@
         <p class="sub">湖北三人麻将 · 单机版</p>
       </div>
     </div>
-    <div class="hud">
+    <div class="hud" id="hud">
       <div class="hud-item"><label>局数</label><b id="hud-round">1</b></div>
       <div class="hud-item"><label>底金</label><b id="hud-base">1</b></div>
       <div class="hud-item"><label>剩余牌</label><b id="hud-wall">44</b></div>
@@ -35,7 +36,7 @@
   <main class="table" id="table">
     <div class="opponents">
       <section class="seat seat-opp" id="seat-2"></section>
-      <div class="center-col">
+      <div class="center-col" id="center-col">
         <div class="center-info">
           <div class="turn-indicator" id="turn-indicator">准备开始</div>
           <div class="center-tiles" id="center-tiles"></div>
@@ -60,6 +61,10 @@
 </div>
 
 <div class="modal-host" id="modal-host" hidden></div>
+
+<!-- 手机版：二次点击出牌的确认条 + 长按看听牌的信息条（桌面版不显示） -->
+<div id="confirm-bar"></div>
+<div id="tile-info"></div>
 
 <!-- 开始游戏界面 -->
 <div class="screen" id="start-screen">
