@@ -56,9 +56,22 @@ body.layout-mobile.layout-landscape .seat-self .row.discards .tile { width: 19px
 body.layout-mobile .row.waits .tile { width: 18px; height: 25px; border-radius: 3px; }
 body.layout-mobile .center-tiles .tile { width: 26px; height: 36px; border-radius: 4px; }
 
-/* 自己的手牌：竖屏两行（7+7，一张 50x70）／横屏单行（32x46） */
-body.layout-mobile.layout-portrait .seat-self .hand-row .tile { width: 50px; height: 70px; border-radius: 6px; }
-body.layout-mobile.layout-landscape .seat-self .hand-row .tile { width: 32px; height: 46px; border-radius: 5px; }
+/* 自己的手牌：竖屏两行（7+7）／横屏单行。
+   牌宽用「按屏宽算」的流式尺寸：窄屏（320）自动缩小也要凑成 7 张一行，
+   宽屏（390+）封顶 50px（竖屏）/ 32px（横屏），保证不定行、放得下。 */
+body.layout-mobile .seat-self .hand-row .tile {
+  height: auto;
+  aspect-ratio: 100 / 140;       /* 牌面 viewBox 是 100x140，保持比例 */
+}
+body.layout-mobile.layout-portrait .seat-self .hand-row .tile {
+  width: min(50px, calc((100vw - 30px) / 7 - 1px));
+  border-radius: 6px;
+}
+body.layout-mobile.layout-landscape .seat-self .hand-row .tile {
+  width: min(32px, calc((100vw - 230px) / 14 - 1px));
+  border-radius: 5px;
+  flex: 0 0 auto;
+}
 
 /* ============================================================
    通用区块的手机版尺寸（覆盖电脑版留的固定最小高度）
@@ -218,6 +231,7 @@ body.layout-mobile.layout-portrait .center-meta { font-size: 10px; }
 body.layout-mobile.layout-portrait .seat-self .row.waits { flex-wrap: nowrap; padding: 3px 6px; }
 body.layout-mobile.layout-portrait .seat-self .row.waits > * { white-space: nowrap; }
 body.layout-mobile.layout-portrait .seat-self .hand-row { flex-wrap: wrap; row-gap: 4px; overflow-x: hidden; }
+body.layout-mobile.layout-landscape .seat-self .hand-row { flex-wrap: nowrap; overflow-x: auto; }
 body.layout-mobile.layout-portrait .seat-opp .row.discards .discards-list { height: calc(42px * 5 + 5px); }
 body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: calc(42px * 2 + 2px); }
 
