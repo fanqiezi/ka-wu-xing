@@ -1,0 +1,19 @@
+{
+  "name": "卡五星麻将 · 单机版",
+  "short_name": "卡五星",
+  "description": "湖北三人麻将「卡五星」离线单机版：你 + 两个电脑，纯静态、零依赖，手机横竖屏都能玩",
+  "lang": "zh-CN",
+  "id": "ka-wu-xing",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d3b2e",
+  "theme_color": "#0d3b2e",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

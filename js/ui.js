@@ -188,10 +188,27 @@
       tip.textContent = '当前设置：底金 ' + s.baseScore + ' · 封顶 ' +
         (s.cap > 0 ? '×' + s.cap : '不封顶') + ' · 屁胡' +
         (s.pitHuOnlyZimo ? '只能自摸' : '可以捉炮') + ' · 亮倒' +
-        (s.liangdaoEnabled ? '开启' : '关闭');
+        (s.liangdaoEnabled ? '开启' : '关闭') + pwaTip();
     }
     el.startScreen.hidden = false;
     render();
+  }
+
+  /** 手机上给一句「怎么装到桌面」的提示（装了就不再提示） */
+  function pwaTip() {
+    try {
+      var ua = navigator.userAgent || '';
+      var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        navigator.standalone === true;
+      if (standalone || location.protocol === 'file:') return '';
+      var iOS = /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (iOS) return '\n装到桌面：点底部分享 → 添加到主屏幕（全屏、断网也能玩）';
+      if (/Android/.test(ua) && window.innerWidth <= 820) {
+        return '\n装到桌面：浏览器菜单 → 安装应用 / 添加到主屏幕（全屏、断网也能玩）';
+      }
+      return '';
+    } catch (e) { return ''; }
   }
 
   function startGame() {

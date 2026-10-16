@@ -20,6 +20,7 @@
 * 双击 **`启动游戏.cmd`**，或直接双击 **`index.html`**
 * 打开后先停在**开始游戏界面**（不会一进去就开局），点「开始游戏」才发牌
 * 零依赖、零构建、不需要联网、不需要装任何东西（用系统自带浏览器打开即可）
+* 手机上打开会自动切到手机版布局（竖屏/横屏都支持），也可以「添加到主屏幕」当 app 用：全屏、**断网也能玩**
 * 想跑自测：双击 `运行测试.cmd`（需要 Node.js）
 
 ## 手机版
@@ -43,6 +44,20 @@ index.html?layout=desktop     强制电脑版（手机上想用桌面版时）
 | 牌河 | 对手 5 行、自己 2 行，**超出可上下滑动** | 2 行，超出可上下滑动 |
 | 触摸交互 | **二次点击出牌**（第一次点选中并抬起 + 顶部确认条「打出/取消」，第二次点才真打）· **长按 380ms** 看「打这张听什么」· 铳牌点不动并提示 · 按钮 ≥46px | 同左 |
 | 其它 | 弹窗（记录/设置/规则/结算）变**底部抽屉**并在内部滚动 · 安全区适配 · 禁止双击缩放 | 同左 |
+
+### 装到桌面（PWA）
+
+打开 <https://fanqiezi.github.io/ka-wu-xing/> 后：
+
+* **Android / Chrome**：菜单里点「安装应用 / 添加到主屏幕」
+* **iOS / Safari**：点底部分享 →「添加到主屏幕」（Safari 没有自动安装提示，开始界面里也会提示你这一步）
+
+装完就是一个**全屏、无地址栏**的图标，**断网也能玩**——`sw.js` 会把整个游戏外壳预缓存下来
+（发版时改 `sw.js` 里的 `VERSION` 就会换缓存名，旧缓存自动清掉，下次打开即最新）。
+`file://` 双击打开的老用法完全不受影响（只在 http(s) 下注册 SW）。
+
+PWA 自检：`node tests/pwa-check.js`（本地起 http 服务，用真实浏览器验证 SW 激活、manifest、
+四个图标、预缓存里有没有游戏外壳，然后**真的断网重开一局**）。图标用 `node tests/make-icons.js` 重新生成。
 
 要看真实效果：手机上直接开 <https://fanqiezi.github.io/ka-wu-xing/>，或用
 `node tests/shots-real.js`（puppeteer + 本机 Chrome）在 390×844 / 844×390 / 1280×800 三种尺寸下截图 + 自检
@@ -272,25 +287,40 @@ index.html?layout=desktop     强制电脑版（手机上想用桌面版时）
 ```
 ka-wu-xing/
 ├─ index.html            页面骨架（含开始界面）
+├─ manifest.webmanifest  PWA 清单（全屏、横竖屏都支持、图标）
+├─ sw.js                 离线缓存：预缓存游戏外壳，断网也能玩
+├─ icons/                桌面图标（192 / 512 / maskable / apple-touch-icon）
 ├─ 启动游戏.cmd          双击开始
 ├─ 运行测试.cmd          跑全部自测
-├─ css/style.css         样式（开始界面 / 牌桌 / 牌面 / 弹窗 / 图表）
+├─ css/
+│  ├─ style.css          样式（开始界面 / 牌桌 / 牌面 / 弹窗 / 图表）
+│  └─ mobile.css         手机版布局（竖屏/横屏两套 + 触摸交互）
 ├─ js/
 │  ├─ tiles.js           牌的编码、名称、牌墙、SVG 牌面绘制
 │  ├─ rules.js           胡牌判定、听牌、向听数、番型计分（含屁胡限制）
 │  ├─ ai.js              电脑出牌 / 碰杠 / 亮倒决策
 │  ├─ game.js            三人牌局状态机（摸打碰杠胡、杠分、荒庄赔听、结算、对局记录）
 │  ├─ stats.js           对局记录汇总 + canvas 折线图
-│  ├─ ui.js              渲染与交互
-│  └─ main.js            启动入口
+│  ├─ ui.js              渲染与交互（含桌面/手机两套布局分支与触摸交互）
+│  └─ main.js            启动入口（含 Service Worker 注册）
 ├─ tests/
 │  ├─ rules.test.js      规则引擎自测（41 项）
 │  ├─ game.test.js       牌局引擎 + 全自动对局模拟 + 记录统计（47 项）
 │  ├─ ui.test.js         界面联调：打桩 DOM 里真跑 ui.js（32 项，含 3 项手机版布局/触摸）
-│  ├─ tune-liangdao.js   亮倒模型标定脚本（决策率 / 亮倒胜率 / 点炮次数，开发用）
+│  ├─ tune-liangdao.js   亮倒模型标定脚本（开发用）
+│  ├─ shots-real.js      真实游戏在 390×844 / 844×390 / 1280×800 下截图 + 自检
+│  ├─ shots-sizes.js     9 种真机尺寸自检（含「对手亮倒」最坏情况）
+│  ├─ pwa-check.js       PWA 自检：SW 注册 / manifest / 预缓存 / **断网还能开局**
+│  ├─ make-icons.js      生成 PWA 图标（无头 Chrome 渲染）
+│  ├─ preview.smoke.js   手机版样张的冒烟测试（jsdom）
+│  ├─ shots.js           样张截图 + 尺寸
 │  └─ dom-shim.js        极简 DOM 打桩，供界面测试用
+├─ preview/              评审用的静态样张（竖屏/横屏）+ 实机截图
 └─ screenshots/          界面截图
 ```
+
+> `shots-*.js` / `pwa-check.js` / `make-icons.js` / `preview.smoke.js` / `shots.js` 都是**开发用**脚本，
+> 需要 `puppeteer-core`（+ 本机 Chrome）或 `jsdom`；仓库本体仍然零依赖、双击 `index.html` 就能玩。
 
 牌面不是字体也不是图片，而是运行时生成的 SVG：筒子画同心圆饼（1筒大红心、5筒红心居中、7/9筒按实物配色），条子画带竹节和两端箍的竹条，一条画麻雀，中发白画字/蓝框。所以不依赖任何字体和网络。
 

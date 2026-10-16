@@ -322,7 +322,7 @@ button { font-family: inherit; }
 
 .start-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
 .btn.big { font-size: 17px; padding: 13px 40px; letter-spacing: 3px; border-radius: 13px; }
-.start-tip { margin: 16px 0 0; font-size: 11px; color: var(--text-dim); }
+.start-tip { margin: 16px 0 0; font-size: 11px; color: var(--text-dim); white-space: pre-line; }
 
 /* ------------------------------ 记录图表 ------------------------------ */
 .chart-wrap {

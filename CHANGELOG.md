@@ -20,10 +20,17 @@
 ### 牌河
 - 超过限定行数时可以**上下滑动**（横屏上家第 3 排不再被盖住），渲染后自动滑到最新一张
 
+### PWA：装到桌面、断网可玩
+- `manifest.webmanifest` + `sw.js` + `icons/`（192 / 512 / maskable / apple-touch-icon，用无头 Chrome 生成）
+- 打开网址后「添加到主屏幕 / 安装应用」即为**全屏无地址栏**的图标；`sw.js` 预缓存整个游戏外壳，**断网也能玩**
+- 只在 http(s) 下注册 Service Worker；`file://` 双击打开的老用法完全不受影响
+- iOS Safari 没有自动安装提示 → 开始界面会提示「分享 → 添加到主屏幕」
+
 ### 其它
 - 引擎（规则 / 牌局 / AI / 统计）一行未改；自测 120 项（规则 41 / 牌局 47 / 界面 32，界面里含 3 项手机版用例）
 - 新增 `tests/shots-real.js` / `tests/shots-sizes.js`：用 puppeteer 在 320×568 ~ 932×430 共 9 种真机尺寸下
   截图 + 自检（横向/纵向溢出、面板重叠、手牌行数、顶栏是否被挤爆），并覆盖「对手亮倒」的最坏情况
+- 新增 `tests/pwa-check.js`：SW 注册 / manifest / 预缓存 / **断网重开一局**；`tests/make-icons.js` 生成图标
 - 评审用的静态样张保留在 `preview/`（`?state=` / `?hand=` / `?river=` / `?more=1` 可切状态）
 
 ## v1.0.0
