@@ -221,6 +221,54 @@ function playOne(seed, stats) {
     assert.strictEqual(game.players[2].score, 4);
   });
 
+  await testAsync('杠分单独记账：结算弹窗的「杠分」，加上胡牌结算，正好等于每局明细的加减分', async () => {
+    // 复现用户反馈：自摸 6 倍（底金 5）+ 下家亮倒 + 本局有过暗杠，
+    // 弹窗只显示胡牌结算 90 分，而「每局明细」是含杠分的 100/-50/-50 → 两边对不上。
+    const game = new Game({ speed: 0, rules: { baseScore: 5, cap: 8 } });
+    game.players.forEach(function (p) { p.score = 0; });
+    game._scoreBefore = [0, 0, 0];              // 真实牌局里 startRound 会记这个快照
+    game.players[1].hand = [9, 9, 9, 9, 0, 1, 2];
+    await game.doKong(1, 9, 'ankong', null);    // 下家暗杠：其他两家各付 2×底金 = 10
+    assert.strictEqual(game.players[1].score, 20);
+    assert.strictEqual(game.roundGangs.length, 1, '本局应记下一条杠分');
+
+    game.players[1].liangdao = true;            // 下家亮倒 → 输钱翻倍
+    const result = {
+      capped: 6, isPitHu: false,
+      items: [{ name: '碰碰胡', mult: 2 }, { name: '清一色', mult: 4 }], typeFan: 6
+    };
+    game.players[0].hand = [0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+    await game.settleWin([{ seat: 0, result: result, winTile: 4, fromSeat: null }], true, {});
+
+    const rr = game.roundResult;
+    // 胡牌结算：上家 30、下家 60（亮倒翻倍），你得 90
+    const payBySeat = {};
+    rr.winners[0].pays.forEach(function (p) { payBySeat[p.seat] = p.amount; });
+    assert.deepStrictEqual([payBySeat[1], payBySeat[2]], [60, 30], '胡牌结算：下家 60（亮倒）/ 上家 30');
+    assert.strictEqual(game.players[0].score, 80, '你：胡牌 +90，暗杠先付出去 10 → +80');
+    // 加上暗杠：杠家 +20，另外两家各 -10 → 实际加减分是 80 / -40 / -40
+    assert.deepStrictEqual(game.players.map(p => p.score), [80, -40, -40]);
+    assert.deepStrictEqual(rr.gangs.map(g => ({ seat: g.seat, per: g.per, payers: g.payers.length })),
+      [{ seat: 1, per: 10, payers: 2 }], '结算结果里应带上杠分');
+
+    // 每局明细的 deltas 必须等于「胡牌结算 + 杠分」，弹窗里两张表加起来要能对得上
+    const h = game.history[game.history.length - 1];
+    assert.deepStrictEqual(h.deltas, [80, -40, -40], '明细加减分含杠分');
+    const winNet = [0, 0, 0];
+    rr.winners.forEach(function (w) {
+      winNet[w.seat] += w.pays.reduce((s, p) => s + p.amount, 0);
+      w.pays.forEach(function (p) { winNet[p.seat] -= p.amount; });
+    });
+    const gangNet = [0, 0, 0];
+    rr.gangs.forEach(function (g) {
+      gangNet[g.seat] += g.per * g.payers.length;
+      g.payers.forEach(function (s) { gangNet[s] -= g.per; });
+    });
+    assert.deepStrictEqual(winNet.map((v, i) => v + gangNet[i]), h.deltas,
+      '胡牌结算 + 杠分 = 明细（弹窗和记录必须一致）');
+    assert.deepStrictEqual(h.gangs.map(g => g.kind), ['ankong'], '记录里也存一分杠分');
+  });
+
   /* ------------------------------------------------------------------ */
   group('杠分 / 抢杠 / 荒庄赔听 / 屁胡拦截（流程级）');
 

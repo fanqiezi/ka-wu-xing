@@ -803,6 +803,129 @@ function boot(seed) {
     }
   });
 
+  await atest('点炮胡：手里 13 张一张不少，胡的那张单独摆在右边', async () => {
+    // 用户反馈：胡 六筒 时弹窗少显示一张 6筒 —— 因为点炮的胡牌张不在手里，
+    // 旧代码却还从手牌里删了一张同名牌。
+    const g = win.KWX_UI.getGame();
+    g.stop();
+    await sleep(300);
+    g.playing = false;
+    const modalHost = dom.byId['modal-host'];
+    modalHost.hidden = true;
+    modalHost.innerHTML = '';
+    const hand = H('123456789t 99b 22b');          // 13 张，手里也有 9条
+    const winTile = H('9b')[0];                    // 别人打出的 9条
+    assert.ok(hand.indexOf(winTile) >= 0, '这手牌里本来就有 9条（复现条件）');
+    const result = {
+      type: 'win',
+      winners: [{
+        seat: 0, name: g.players[0].name, selfDraw: false, fromSeat: 1, winTile: winTile,
+        qiangGang: false, gangPao: false, amount: 5,
+        hand: hand, melds: [],
+        pays: [{ seat: 1, amount: 5 }],
+        result: {
+          items: [{ name: '碰碰胡', mult: 2, kind: 'type' }],
+          sum: 2, cappedSum: 2, capped: 2, liangdaoMul: 1
+        }
+      }]
+    };
+    g.players[0].hand = hand.slice();
+    g.players[0].lastDraw = null;                  // 点炮：手里没有刚摸的牌
+    g.players[0].melds = [];
+    g.roundResult = result;
+    g.emit('roundEnd', result);
+    await sleep(500);
+    try {
+      const html = modalHost.children.map(c => c.innerHTML).join('');
+      assert.strictEqual(html.split('win-tile').length - 1, 1, '只应有一个赢张标记');
+      const rowStart = html.indexOf('<div class="row melds">');
+      const rowEnd = html.indexOf('</div>', rowStart);
+      const rowHtml = html.slice(rowStart, rowEnd);
+      const tiles = rowHtml.split('<span class="tile sm').length - 1;
+      assert.strictEqual(tiles, 13 + 1, '手牌 13 张 + 胡的那张 = 14 张，实际 ' + tiles);
+    } finally {
+      modalHost.hidden = true;
+      modalHost.innerHTML = '';
+    }
+  });
+
+  await atest('结算弹窗：列出杠分，并给出「本局合计」（和每局明细对得上）', async () => {
+    const g = win.KWX_UI.getGame();
+    g.stop();
+    await sleep(900);              // 等牌局里在跑的那一手彻底停下，免得它插进来改分数
+    g.playing = false;
+    const modalHost = dom.byId['modal-host'];
+    modalHost.hidden = true;
+    modalHost.innerHTML = '';
+    const savedHistory = g.history.slice();
+    const savedScores = g.players.map(p => p.score);
+    try {
+      // 造一局：下家暗杠（每家 10）+ 你自摸 30、下家亮倒付 60
+      g.players[0].score = -10; g.players[1].score = 20; g.players[2].score = -10;
+      g.players[0].score += 90; g.players[1].score -= 60; g.players[2].score -= 30;
+      g._scoreBefore = [0, 0, 0];
+      // Array.from：这些数组是在 vm 沙箱里造的，直接比原型会不相等
+      assert.deepStrictEqual(Array.from(g.players.map(p => p.score)), [80, -40, -40], '先摆好本局分数');
+      const gangs = [{ seat: 1, kind: 'ankong', tile: 9, per: 10, chain: 1, payers: [0, 2] }];
+      const result = {
+        type: 'win', gangs: gangs,
+        winners: [{
+          seat: 0, name: g.players[0].name, selfDraw: true, winTile: H('4t')[0],
+          qiangGang: false, gangPao: false, amount: 30,
+          hand: H('123456789t 111b 22b'), melds: [],
+          pays: [{ seat: 1, amount: 60, note: '亮倒者输牌赔双倍' }, { seat: 2, amount: 30 }],
+          result: {
+            items: [{ name: '碰碰胡', mult: 2, kind: 'type' }, { name: '清一色', mult: 4, kind: 'type' }],
+            sum: 6, cappedSum: 6, capped: 6, liangdaoMul: 1
+          }
+        }]
+      };
+      g.recordRound(result);       // 写进 history（deltas = 80 / -40 / -40）
+      const h = g.history[g.history.length - 1];   // 立刻抓这一条（后面可能又跑出别的记录）
+      g.roundResult = result;
+      g.emit('roundEnd', result);
+      await sleep(500);
+
+      const html = modalHost.children.map(c => c.innerHTML).join('');
+      const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      assert.ok(html.indexOf('<h3>杠分</h3>') >= 0, '弹窗应有「杠分」一栏');
+      assert.ok(text.indexOf('下家 暗杠 一条') >= 0, '应写明是谁暗杠了什么牌，实际：' + text.slice(-260));
+      assert.ok(html.indexOf('本局合计') >= 0, '弹窗应有「本局合计」');
+      assert.deepStrictEqual(Array.from(h.deltas), [80, -40, -40], '明细加减分含杠分');
+      assert.ok(text.indexOf('+80') >= 0 && text.indexOf('-40') >= 0, '合计应显示 80 / -40 / -40');
+      assert.ok(text.indexOf('合计 ' + (6 * g.rules.baseScore) + ' 分') >= 0, '胡牌结算仍是 6 倍底金');
+    } finally {
+      g.history.length = 0;
+      savedHistory.forEach(h => g.history.push(h));
+      g.players.forEach((p, i) => { p.score = savedScores[i]; });
+      g._scoreBefore = null;
+      modalHost.hidden = true;
+      modalHost.innerHTML = '';
+    }
+  });
+
+  /* ------------------------------------------------------------------ */
+  group('提示条');
+
+  await atest('连续两条提示只留一个，而且会自己消失（不会卡在屏幕上）', async () => {
+    // 用户反馈：「屁胡不能捉炮：四筒 只能自摸」一直不消失。
+    // 原因是每条提示都新建一个 div，又共用一个计时器 —— 新提示把旧提示的计时器清掉，旧的就永远留着了。
+    const g = win.KWX_UI.getGame();
+    const body = dom.byId['body'] || win.document.body;
+    const toasts = () => dom.findAll(body, n => dom.hasClass(n, 'toast'));
+
+    g.emit('pitHuBlocked', { tile: 4 });
+    g.emit('pitHuBlocked', { tile: 5 });
+    assert.strictEqual(toasts().length, 1, '屏幕上只应有一个提示条，实际 ' + toasts().length);
+    assert.ok(dom.hasClass(toasts()[0], 'show'), '刚弹出时应是显示状态');
+    assert.ok(toasts()[0].textContent.indexOf('屁胡不能捉炮') >= 0,
+      '提示内容应是屁胡拦截，实际：' + toasts()[0].textContent);
+
+    await sleep(3000);                     // pitHuBlocked 的提示 2.6 秒后收起
+    assert.ok(!dom.hasClass(toasts()[0], 'show'), '超时后提示条应隐藏');
+    assert.strictEqual(toasts().length, 1, '隐藏后也不该堆出新的提示条，实际 ' + toasts().length);
+  });
+
   /* ------------------------------------------------------------------ */
   group('手机版布局（竖屏 / 横屏）');
 

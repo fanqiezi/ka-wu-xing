@@ -135,6 +135,9 @@ body.layout-mobile .wait-chip { display: inline-flex; align-items: center; gap: 
 body.layout-mobile .wait-chip .cnt { font-size: 9px; }
 body.layout-mobile .row.waits { overflow: hidden; }
 
+/* 弹窗里的手牌行要允许换行：结算弹窗「13 张手牌 + 胡的那张」在窄屏会超出右边 */
+body.layout-mobile .modal .row { flex-wrap: wrap; }
+
 /* 牌河：超过限定行数时**上下滑动**（横屏上家第 3 排不会被盖住） */
 body.layout-mobile .row.discards { overflow: hidden; }
 body.layout-mobile .row.discards .discards-list {

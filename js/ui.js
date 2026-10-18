@@ -82,6 +82,7 @@
   var pendingAsk = null;
   var el = {};
   var toastTimer = null;
+  var toastEl = null;
   var queuedDiscard = null;   // 在「问亮倒」时先点好的那张牌
 
   /* ------------------------------------------------------------------ */
@@ -1029,15 +1030,22 @@
     el.modalHost.innerHTML = '';
   }
 
+  /**
+   * 顶部提示条。只用**一个**元素反复用：
+   * 原来每条提示都新建一个 div，又用同一个计时器，结果新提示把旧提示的计时器清掉，
+   * 旧的那个就永远留在屏幕上了（「屁胡不能捉炮」卡住不消失就是这个原因）。
+   */
   function toast(msg, ms) {
-    var t = document.createElement('div');
-    t.className = 'toast show';
-    t.textContent = msg;
-    document.body.appendChild(t);
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'toast';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
-      t.classList.remove('show');
-      setTimeout(function () { t.remove(); }, 300);
+      toastEl.classList.remove('show');
     }, ms || 2000);
   }
 
@@ -1048,14 +1056,52 @@
     }).join('');
   }
 
-  /** 手牌（不含胡牌张）+ 把胡牌张单独放在右边 */
+  /**
+   * 手牌 + 把胡牌张单独放在右边。
+   * 自摸时胡的那张已经在手里（14 张），要挑出来单独摆；
+   * 点炮/抢杠时胡的是别人的牌（手里 13 张），**不能从手里删**，否则会少显示一张。
+   */
   function handWithWinTileHtml(hand, winTile, sizeCls) {
     var rest = hand.slice();
-    var i = rest.indexOf(winTile);
-    if (i >= 0) rest.splice(i, 1);
+    if (rest.length % 3 === 2) {            // 14 张 = 自摸，胡牌张在手里
+      var i = rest.indexOf(winTile);
+      if (i >= 0) rest.splice(i, 1);
+    }
     return tilesHtml(rest, sizeCls) +
       '<span class="win-gap"></span>' +
       tilesHtml([winTile], sizeCls, 'win-tile');
+  }
+
+  /** 本局杠分（杠是当场结算的，结算弹窗里单独列出来，才能和「每局明细」对得上） */
+  function gangBlockHtml(gangs) {
+    if (!gangs || !gangs.length) return '';
+    var html = '<h3>杠分</h3><table class="pay-table"><tr><th>杠</th><th>谁付</th>' +
+      '<th style="text-align:right">分数</th></tr>';
+    gangs.forEach(function (g) {
+      var kindTxt = g.kind === 'ankong' ? '暗杠' : (g.kind === 'zhigang' ? '直杠' : '补杠');
+      html += '<tr><td>' + state.players[g.seat].name + ' ' + kindTxt + ' ' + T.nameOf(g.tile) +
+        (g.chain > 1 ? '（杠上杠 ×' + g.chain + '）' : '') + '</td>' +
+        '<td>' + g.payers.map(function (s) { return state.players[s].name; }).join('、') + '</td>' +
+        '<td class="num pos">+' + (g.per * g.payers.length) + '</td></tr>';
+    });
+    html += '</table>';
+    return html;
+  }
+
+  /** 本局合计（= 对局记录「每局明细」里的那几个数：胡牌结算 + 杠分） */
+  function roundTotalHtml() {
+    var g = game;
+    var h = g && g.history && g.history.length ? g.history[g.history.length - 1] : null;
+    if (!h || !h.deltas) return '';
+    var html = '<h3>本局合计 <span class="muted">（胡牌结算 + 杠分，和「每局明细」一致）</span></h3>' +
+      '<table class="pay-table"><tr><th>玩家</th><th style="text-align:right">分数</th></tr>';
+    state.players.forEach(function (p, i) {
+      var d = h.deltas[i] || 0;
+      html += '<tr><td>' + p.name + '</td><td class="num ' + (d > 0 ? 'pos' : (d < 0 ? 'neg' : '')) + '">' +
+        (d === 0 ? '0' : signed(d)) + '</td></tr>';
+    });
+    html += '</table>';
+    return html;
   }
 
   function showRoundResult(result) {
@@ -1128,6 +1174,10 @@
       html += '</div>';
     });
 
+    // 杠是当场结算的：单独列出来，再加一张「本局合计」，免得和「每局明细」对不上
+    html += gangBlockHtml(result.gangs);
+    html += roundTotalHtml();
+
     html += '<h3>当前总分</h3><table class="pay-table"><tr><th>玩家</th><th style="text-align:right">总分</th></tr>';
     state.players.forEach(function (p) {
       html += '<tr><td>' + p.name + '</td><td class="num ' + (p.score >= 0 ? 'pos' : 'neg') + '">' +
@@ -1156,6 +1206,8 @@
         '<td class="num ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net > 0 ? '+' : '') + net + '</td></tr>';
     });
     html += '</table>';
+    html += gangBlockHtml(result.gangs);
+    html += roundTotalHtml();
     html += '<h3>当前总分</h3><table class="pay-table">';
     state.players.forEach(function (p) {
       html += '<tr><td>' + p.name + '</td><td class="num ' + (p.score >= 0 ? 'pos' : 'neg') + '">' +

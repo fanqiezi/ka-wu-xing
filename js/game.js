@@ -71,6 +71,7 @@
     this.log = [];
     this.history = [];        // 每局输赢明细（给「对局记录」用）
     this._scoreBefore = null;
+    this.roundGangs = [];     // 本局杠分（杠是立刻结算的，单独记下来给结算弹窗展示）
     this.gangChain = 0;
     this.wall = [];
     this.turnHadKong = false;
@@ -273,6 +274,7 @@
       deltas: deltas,
       scores: this.players.map(function (p) { return p.score; }),
       winners: winners,
+      gangs: (result && result.gangs) ? result.gangs : null,
       tenpai: (result && result.type === 'huang')
         ? result.tenpai.map(function (t) { return !!t.tenpai; })
         : null
@@ -291,6 +293,7 @@
     var wall = T.riffle(T.makeWall(), this.rng);
     this.wall = wall;
     this.gangChain = 0;
+    this.roundGangs = [];
     this.lastDiscard = null;
     this.roundResult = null;
     this.players.forEach(function (p) {
@@ -818,15 +821,23 @@
         var amtZ = base * 2 * chainMul;
         p.score += amtZ;
         this.players[fromSeat].score -= amtZ;
+        this.roundGangs.push({
+          seat: seat, kind: kind, tile: tile, per: amtZ, chain: chainMul, payers: [fromSeat]
+        });
         this.pushLog(p.name + ' 直杠 ' + T.nameOf(tile) + '，' + this.players[fromSeat].name +
           ' 付 ' + amtZ + '（杠上杠 ×' + chainMul + '）', 'score');
       } else {
         var per = (kind === 'ankong' ? base * 2 : base * 1) * chainMul;
+        var payers = [];
         for (var s = 0; s < 3; s++) {
           if (s === seat) continue;
           p.score += per;
           this.players[s].score -= per;
+          payers.push(s);
         }
+        this.roundGangs.push({
+          seat: seat, kind: kind, tile: tile, per: per, chain: chainMul, payers: payers
+        });
         this.pushLog(p.name + ' ' + (kind === 'ankong' ? '暗杠' : '补杠(明杠)') + ' ' + T.nameOf(tile) +
           '，每家 ' + per + '（杠上杠 ×' + chainMul + '）', 'score');
       }
@@ -910,7 +921,10 @@
     this.learnFromLiangdao(function (s) { return !!winnerSeats[s]; });
 
     this.playing = false;
-    this.roundResult = { type: 'win', winners: details, selfDraw: !!selfDraw, gangChain: this.gangChain };
+    this.roundResult = {
+      type: 'win', winners: details, selfDraw: !!selfDraw,
+      gangChain: this.gangChain, gangs: this.roundGangs.slice()
+    };
     this.recordRound(this.roundResult);
     this.emit('roundEnd', this.roundResult);
     if (this.roundNo > 0) {
@@ -993,7 +1007,8 @@
         return { seat: idx, tenpai: t.tenpai, fan: t.fan, tile: t.tile };
       }),
       pays: pays,
-      gangChain: this.gangChain
+      gangChain: this.gangChain,
+      gangs: this.roundGangs.slice()
     };
     this.recordRound(this.roundResult);
     this.emit('roundEnd', this.roundResult);
