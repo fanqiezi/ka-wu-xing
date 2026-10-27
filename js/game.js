@@ -670,9 +670,8 @@
         huResult = R.canWinOnDiscard(p.hand, p.melds, tile, {
           rules: this.rules,
           liangdao: p.liangdao,
-          // 杠上炮：杠后打出的牌，屁胡也能胡；第几杠决定番数倍数
+          // 杠上炮：杠后打出的牌，屁胡也能胡；固定 ×2 底金（不看第几杠）
           gangPao: this.turnHadKong,
-          gangPaoIndex: this.turnKongIndex,
           // 亮倒的人打出的牌，屁胡也能胡
           fromLiangdao: this.players[fromSeat].liangdao
         });
@@ -814,7 +813,7 @@
     this.gangChain++;
     var chainMul = Math.pow(2, this.gangChain - 1);
     this.turnHadKong = true;
-    this.turnKongIndex = this.gangChain;   // 这是本链的第几杠（杠上炮按这个倍数算）
+    this.turnKongIndex = this.gangChain;   // 这是本链的第几杠（杠分按链递增；杠上炮固定 ×2）
 
     if (this.rules.gangScore) {
       if (kind === 'zhigang') {
@@ -946,13 +945,12 @@
     var anyLiangdao = this.players.some(function (p) { return p.liangdao; });
     var allTenpai = tenpai.every(function (t) { return t.tenpai; });
     if (this.rules.huangzhuangPei) {
-      // 1) 未听牌者赔听牌者（查大叫）
-      //    若对方已经亮倒，则不必赔给他 —— 亮倒的人自己有单独的赔听义务
+      // 1) 未听牌者赔听牌者（查大叫）。
+      //    亮倒的人也算听牌者 —— 未听牌者一样要赔给他（旧的「不必赔亮倒者」开关已并入这条规则）
       for (var i = 0; i < 3; i++) {
         if (tenpai[i].tenpai) continue;
         for (var j = 0; j < 3; j++) {
           if (i === j || !tenpai[j].tenpai) continue;
-          if (this.players[j].liangdao && !this.rules.huangzhuangPeiToLiangdao) continue;
           var fan = Math.min(tenpai[j].fan, cap);
           if (this.players[j].liangdao) fan = Math.min(fan * 2, cap);
           var amt = fan * base;
@@ -985,15 +983,6 @@
       // 3) 无人亮倒且三家都听牌：互相抵消，不进行任何赔付
       if (!anyLiangdao && allTenpai) {
         this.pushLog('三家都听牌且无人亮倒 —— 互不赔付', 'muted');
-      }
-      // 有亮倒者时，未听牌的人不必再赔给亮倒者
-      if (anyLiangdao && !this.rules.huangzhuangPeiToLiangdao) {
-        var skipped = this.players.some(function (p, idx) {
-          return !tenpai[idx].tenpai && this.players.some(function (q, k) {
-            return k !== idx && q.liangdao && tenpai[k].tenpai;
-          });
-        }, this);
-        if (skipped) this.pushLog('未听牌者不必赔给亮倒的人', 'muted');
       }
     }
 

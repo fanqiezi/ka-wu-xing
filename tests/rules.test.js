@@ -299,7 +299,7 @@ test('加算计分：底金 5、卡五星 + 清一色 = 5 × (2+4) = 30', () => 
   assert.strictEqual(l.fan * 5, 60, '底金 5 × 6 × 2 = 60');
 });
 
-test('杠上炮是乘算：清一色 4 × 第 1 杠 2 = 8 → 底金 5 = 40', () => {
+test('杠上炮固定 ×2（不再按第几杠递增）：清一色 4 × 2 = 8 → 底金 5 = 40', () => {
   const s = scoreOf('123t 456t 789t 123t 22t', '3t', {
     rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: 1
   });
@@ -307,26 +307,28 @@ test('杠上炮是乘算：清一色 4 × 第 1 杠 2 = 8 → 底金 5 = 40', ()
   const gp = s.items.filter(i => i.name === '杠上炮')[0];
   assert.ok(gp, '应有杠上炮');
   assert.strictEqual(gp.mode, 'mul', '杠上炮是乘算项');
-  assert.strictEqual(gp.mult, 2, '第 1 杠 ×2');
+  assert.strictEqual(gp.mult, 2, '杠上炮固定 ×2');
   assert.strictEqual(s.baseSum, 4, '加算部分只有清一色 4');
   assert.strictEqual(s.sum, 8, '4 × 2 = 8');
   assert.strictEqual(s.fan * 5, 40, '底金 5 × 8 = 40');
 
-  // 屁胡 + 杠上炮：加算部分是屁胡兜底的 1，乘完就是 2 倍
+  // 屁胡 + 杠上炮：加算部分是屁胡兜底的 1，乘完就是 2 倍底金
   const pit = scoreOf('123456789t 123b 11b', '3b', {
     rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: 1
   });
   assert.strictEqual(pit.baseSum, 1, '屁胡兜底 1');
-  assert.strictEqual(pit.sum, 2, '1 × 2 = 2');
+  assert.strictEqual(pit.sum, 2, '1 × 2 = 2 倍底金');
   assert.strictEqual(pit.fan * 5, 10, '底金 5 × 2 = 10');
   assert.strictEqual(pit.isPitHu, true, '有杠上炮也还是屁胡（所以平时不能捉炮）');
 
-  // 第 2 杠 = ×4：清一色 → 16，被默认 ×8 封顶
-  const s2 = scoreOf('123t 456t 789t 123t 22t', '3t', {
-    rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: 2
+  // 杠上杠的第 2 杠、第 3 杠也还是 ×2（原来会变成 ×4、×6）
+  [2, 3].forEach(function (idx) {
+    const sx = scoreOf('123t 456t 789t 123t 22t', '3t', {
+      rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: idx
+    });
+    assert.strictEqual(sx.sum, 8, '第 ' + idx + ' 杠也是 ×2（清一色 4 × 2 = 8），实际 ' + sx.sum);
+    assert.strictEqual(sx.fan * 5, 40, '第 ' + idx + ' 杠：底金 5 × 8 = 40');
   });
-  assert.strictEqual(s2.sum, 16, '清一色 4 × 第 2 杠 4 = 16');
-  assert.strictEqual(s2.capped, 8, '默认 ×8 封顶');
 });
 
 test('封顶 ×8：加算后 七对4 + 清一色4 = 8', () => {

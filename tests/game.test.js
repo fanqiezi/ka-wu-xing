@@ -936,31 +936,32 @@ function playOne(seed, stats) {
       assert.deepStrictEqual(g.players.map(p => p.score), [-2, 1, 1]);
     });
 
-    await testAsync('荒局：未听牌者不必再赔给亮倒者', async () => {
+    await testAsync('荒局：未听牌者要赔给亮倒者（已并入「未听牌赔听牌」，收赔番数 ×2）', async () => {
       const g = new Game({ speed: 0, rules: { baseScore: 1, cap: 8 } });
       g.wall = [];
-      g.players[0].hand = H('123456789t 12b 11b');      // 唯一听牌的人还亮倒了
+      g.players[0].hand = H('123456789t 12b 11b');      // 唯一听牌的人，而且亮倒了
       g.players[0].liangdao = true;
       g.players[1].hand = H('147t 258b 369b 11z 22z');  // 未听
       g.players[2].hand = H('147t 258b 369b 11z 22z');  // 未听
       const res = g.finishHuangzhuang();
-      assert.strictEqual(res.pays.length, 0, '未听牌者不用赔亮倒者，也不该有别的赔付');
-      assert.deepStrictEqual(g.players.map(p => p.score), [0, 0, 0]);
+      // 未听的 1、2 各赔 0 号 1×2（亮倒收赔翻倍）= 2；0 号没有别的听牌者可赔
+      assert.strictEqual(res.pays.length, 2, '应有 2 笔未听赔听，实际 ' + res.pays.length);
+      assert.deepStrictEqual(g.players.map(p => p.score), [4, -2, -2]);
     });
 
-    await testAsync('荒局：打开开关后未听牌者仍赔亮倒者（收赔番数 ×2）', async () => {
-      const g = new Game({ speed: 0, rules: { baseScore: 1, cap: 8, huangzhuangPeiToLiangdao: true } });
+    await testAsync('荒局：关掉「未听牌赔听牌」后不再赔付', async () => {
+      const g = new Game({ speed: 0, rules: { baseScore: 1, cap: 8, huangzhuangPei: false } });
       g.wall = [];
       g.players[0].hand = H('123456789t 12b 11b');
       g.players[0].liangdao = true;
       g.players[1].hand = H('147t 258b 369b 11z 22z');
       g.players[2].hand = H('147t 258b 369b 11z 22z');
-      g.finishHuangzhuang();
-      // 1、2 各赔 0 号 1×2（亮倒收赔翻倍）= 2 → 0 号 +4
-      assert.deepStrictEqual(g.players.map(p => p.score), [4, -2, -2]);
+      const res = g.finishHuangzhuang();
+      assert.strictEqual(res.pays.length, 0, '关掉之后不该有赔付');
+      assert.deepStrictEqual(g.players.map(p => p.score), [0, 0, 0]);
     });
 
-    await testAsync('荒局：未听牌者只赔没亮倒的听牌者', async () => {
+    await testAsync('荒局：未听牌者要赔给所有听牌者（含亮倒者）', async () => {
       const g = new Game({ speed: 0, rules: { baseScore: 1, cap: 8 } });
       g.wall = [];
       g.players[0].hand = H('123456789t 12b 11b');       // 听牌 + 亮倒
@@ -968,9 +969,10 @@ function playOne(seed, stats) {
       g.players[1].hand = H('123456789b 12t 11t');       // 听牌，没亮倒
       g.players[2].hand = H('147t 258b 369b 11z 22z');   // 未听
       g.finishHuangzhuang();
-      // 未听的 2 只赔没亮倒的听牌者 1（1 分），不赔亮倒的 0
-      // 亮倒的 0 赔其他听牌者 1（1 分）
-      assert.deepStrictEqual(g.players.map(p => p.score), [-1, 2, -1]);
+      // 未听的 2：赔亮倒的 0 号 1×2=2、赔没亮倒的 1 号 1 → −3
+      // 亮倒的 0：仍要赔给其他听牌者 1 号 1 分 → 净 +1
+      // 1 号：收 2（来自 2）+ 收 1（来自 0 的亮倒赔付）= +2，另外还要收 0 的 1 分 → 上面已含
+      assert.deepStrictEqual(g.players.map(p => p.score), [1, 2, -3]);
     });
 
     await testAsync('荒局：三家都听牌且无人亮倒 -> 互不赔付', async () => {
@@ -1008,7 +1010,7 @@ function playOne(seed, stats) {
       assert.deepStrictEqual(g2.players.map(p => p.score), [28, -14, -14], '第三杠：每家 8 倍');
     });
 
-    await testAsync('杠上炮：屁胡也能胡，且番数和 = 第几杠 × 2', async () => {
+    await testAsync('杠上炮：屁胡也能胡，番数和固定 ×2（不再按第几杠递增）', async () => {
       const pit = H('123456789t 12b 11b');       // 听 3条，屁胡
       const tile = 9 + 3 - 1;
 
@@ -1022,17 +1024,18 @@ function playOne(seed, stats) {
       });
       assert.ok(gp1, '杠上炮屁胡也该能胡');
       assert.strictEqual(gp1.isPitHu, true);
-      assert.strictEqual(gp1.fan, 2, '第 1 杠杠上炮：番数和 2（不是 1+2=3）');
+      assert.strictEqual(gp1.fan, 2, '屁胡杠上炮：番数和 2（= 2 倍底金）');
 
+      // 第 2、第 3 杠也是固定 ×2（原来会变成 ×4、×6）
       const gp2 = R.canWinOnDiscard(pit, [], tile, {
         rules: R.DEFAULT_RULES, gangPao: true, gangPaoIndex: 2
       });
-      assert.strictEqual(gp2.fan, 4, '第 2 杠杠上炮：番数和 4');
+      assert.strictEqual(gp2.fan, 2, '第 2 杠杠上炮：还是 2 倍');
 
       const gp3 = R.canWinOnDiscard(pit, [], tile, {
         rules: R.DEFAULT_RULES, gangPao: true, gangPaoIndex: 3
       });
-      assert.strictEqual(gp3.fan, 6, '第 3 杠杠上炮：番数和 6');
+      assert.strictEqual(gp3.fan, 2, '第 3 杠杠上炮：还是 2 倍');
 
       // 关掉开关后又不能胡了
       assert.strictEqual(R.canWinOnDiscard(pit, [], tile, {
@@ -1040,15 +1043,15 @@ function playOne(seed, stats) {
         gangPao: true, gangPaoIndex: 1
       }), null, '关掉 gangPaoPitHu 后杠上炮屁胡也不能胡');
 
-      // 走一遍完整结算：底金 2、第 2 杠、屁胡 => 2 × 4 = 8
+      // 走一遍完整结算：底金 2、第 2 杠、屁胡 => 2 × 2 = 4（不再按第 2 杠 ×4）
       const g = new Game({ speed: 0, rules: { baseScore: 2, cap: 8 } });
       const res = R.canWinOnDiscard(pit, [], tile, {
         rules: g.rules, gangPao: true, gangPaoIndex: 2
       });
       await g.settleWin([{ seat: 1, result: res, winTile: tile, fromSeat: 0 }], false, { gangPao: true });
-      assert.strictEqual(g.players[1].score, 8, '番数和 4 × 底金 2 = 8');
-      assert.strictEqual(g.players[0].score, -8);
-      // 底金 5、第 1 杠、屁胡 => 5 × 2 = 10（用户报的那个例子）
+      assert.strictEqual(g.players[1].score, 4, '番数和 2 × 底金 2 = 4');
+      assert.strictEqual(g.players[0].score, -4);
+      // 底金 5、第 1 杠、屁胡 => 5 × 2 = 10
       const g5 = new Game({ speed: 0, rules: { baseScore: 5, cap: 8 } });
       const res5 = R.canWinOnDiscard(pit, [], tile, {
         rules: g5.rules, gangPao: true, gangPaoIndex: 1
@@ -1057,20 +1060,22 @@ function playOne(seed, stats) {
       assert.strictEqual(g5.players[1].score, 10, '底金 5 × 杠上炮 2 = 10');
       assert.strictEqual(g5.players[0].score, -10);
 
-      // 杠上炮是乘算：清一色 4 × 第 1 杠 2 = 8 倍，底金 5 => 40
+      // 杠上炮仍是乘算：清一色 4 × 2 = 8 倍，底金 5 => 40（换第 2 杠也一样）
       const qy = H('123t 456t 789t 123t 22t');
       const qyTile = H('3t')[0];
       const qyHand = qy.slice();
       qyHand.splice(qyHand.indexOf(qyTile), 1);
-      const gq = new Game({ speed: 0, rules: { baseScore: 5, cap: 8 } });
-      const resQy = R.canWinOnDiscard(qyHand, [], qyTile, {
-        rules: gq.rules, gangPao: true, gangPaoIndex: 1
-      });
-      assert.ok(resQy && resQy.items.some(i => i.name === '清一色'), '应是清一色');
-      assert.strictEqual(resQy.capped, 8, '清一色 4 × 杠上炮 2 = 8 倍');
-      await gq.settleWin([{ seat: 1, result: resQy, winTile: qyTile, fromSeat: 0 }], false, { gangPao: true });
-      assert.strictEqual(gq.players[1].score, 40, '底金 5 × 8 = 40');
-      assert.strictEqual(gq.players[0].score, -40);
+      for (const idx of [1, 2]) {
+        const gq = new Game({ speed: 0, rules: { baseScore: 5, cap: 8 } });
+        const resQy = R.canWinOnDiscard(qyHand, [], qyTile, {
+          rules: gq.rules, gangPao: true, gangPaoIndex: idx
+        });
+        assert.ok(resQy && resQy.items.some(i => i.name === '清一色'), '应是清一色');
+        assert.strictEqual(resQy.capped, 8, '第 ' + idx + ' 杠：清一色 4 × 2 = 8 倍');
+        await gq.settleWin([{ seat: 1, result: resQy, winTile: qyTile, fromSeat: 0 }], false, { gangPao: true });
+        assert.strictEqual(gq.players[1].score, 40, '第 ' + idx + ' 杠：底金 5 × 8 = 40');
+        assert.strictEqual(gq.players[0].score, -40);
+      }
     });
 
     await testAsync('只有加杠能被抢杠：暗杠、直杠都抢不了', async () => {

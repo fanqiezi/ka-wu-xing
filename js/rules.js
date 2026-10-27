@@ -529,9 +529,9 @@
     liangdaoDianPaoAsZimo: false, // 点炮亮倒者是否按「亮倒者自摸」算两份（默认不算）★
     noDealInLiangdao: true,     // 不许故意打出亮倒者的听张（迫不得已除外）★
     liangdaoHuangPei: true,     // 荒局时亮倒的人（即使听牌）还要赔给听牌者 ★
-    huangzhuangPeiToLiangdao: false, // 荒局未听牌者是否还赔给亮倒者（默认不赔）★
     gangScore: true,            // 是否结算杠分
-    huangzhuangPei: true,       // 荒庄赔听（查大叫）
+    // 荒局时未听牌赔听牌（查大叫）。亮倒的人也算听牌者，未听牌者一样要赔给他
+    huangzhuangPei: true,
     zimoDouble: false           // 自摸是否额外翻倍（本规则集默认不加番）
   };
 
@@ -594,15 +594,13 @@
     // 注意：亮倒不在这里 —— 它是最后对得分整体 ×2，不参与加算
     if (ctx.haidi) timing.push({ name: '海底捞', mult: 2, kind: 'timing' });
     if (ctx.gangFlower) timing.push({ name: '杠上开花', mult: 2, kind: 'timing' });
-    // 杠上炮是**乘算**：把「牌型番和」乘以「第几杠 × 2」（第 1 杠 ×2、第 2 杠 ×4 …）
+    // 杠上炮是**乘算**，但**固定 ×2**：不再随「第几杠」递增（杠上杠也是 ×2）
+    //   屁胡 + 杠上炮：1 × 2 = 2 → 2 倍底金
+    //   清一色 + 杠上炮：4 × 2 = 8 → 8 倍底金
     var gangPaoMul = 1;
     if (ctx.gangPao) {
-      var gpIndex = ctx.gangPaoIndex > 0 ? ctx.gangPaoIndex : 1;
-      gangPaoMul = 2 * gpIndex;
-      timing.push({
-        name: '杠上炮', mult: gangPaoMul, kind: 'timing',
-        mode: 'mul', gangPaoIndex: gpIndex
-      });
+      gangPaoMul = 2;
+      timing.push({ name: '杠上炮', mult: 2, kind: 'timing', mode: 'mul' });
     }
     if (ctx.qiangGang) timing.push({ name: '抢杠胡', mult: 2, kind: 'timing' });
 
@@ -689,9 +687,9 @@
     // 一旦有番（哪怕是杠上开花这种时机番），番数和就是那些番相加，不再额外加 1。
     var baseSum = best.typeSum + timingSum;
     if (baseSum === 0) baseSum = 1;         // 屁胡兜底：底金 ×1
-    // 杠上炮「乘算」：番数和 =（牌型番 + 加算时机番）×（第几杠 × 2）
-    //   屁胡 + 第 1 杠杠上炮：1 × 2 = 2  → 底金 5 = 10 分
-    //   清一色 + 第 1 杠杠上炮：4 × 2 = 8 → 底金 5 = 40 分
+    // 杠上炮「乘算」：番数和 =（牌型番 + 加算时机番）× 2（固定 2 倍，不看第几杠）
+    //   屁胡 + 杠上炮：1 × 2 = 2  → 底金 5 = 10 分
+    //   清一色 + 杠上炮：4 × 2 = 8 → 底金 5 = 40 分
     var sum = baseSum * gangPaoMul;
     var cap = best.doubleLong ? Math.max(rules.cap, 16) : rules.cap;
     var cappedSum = cap > 0 ? Math.min(sum, cap) : sum;
