@@ -1316,7 +1316,9 @@
     var html = '<h2>对局记录</h2>';
     if (!history.length) {
       html += '<p class="muted">还没有记录，先打一局吧。</p>';
-      openModal(html, [{ label: '知道了', cls: 'primary', onClick: closeModal }]);
+      html += growthBlockHtml(g);      // 没历史时也能看/清「成长型」的记忆
+      var emptyBox = openModal(html, [{ label: '知道了', cls: 'primary', onClick: closeModal }]);
+      attachHistoryHandlers(emptyBox);
       return;
     }
 
@@ -1410,7 +1412,12 @@
       try { S.drawChart(canvas, players, history); }
       catch (e) { console.error('画折线图失败', e); }
     }
-    // 每局明细里的「回放」按钮（事件委托，表格是拼出来的字符串）
+    // 每局明细里的「回放」按钮 + 「清空记忆」按钮
+    attachHistoryHandlers(box);
+  }
+
+  /** 对局记录弹窗里的事件：回放按钮（事件委托）与清空记忆按钮 */
+  function attachHistoryHandlers(box) {
     if (box && box.addEventListener) {
       box.addEventListener('click', function (e) {
         var btn = e.target && e.target.closest ? e.target.closest('[data-replay]') : null;
@@ -1418,7 +1425,6 @@
         openReplay(parseInt(btn.dataset.replay, 10));
       });
     }
-    // 「清空记忆」按钮（单独挂，方便测试直接点）
     var clearBtn = $('btn-clear-memory');
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {

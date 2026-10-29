@@ -136,7 +136,8 @@
     });
     rows.push({
       label: '摸切率', value: Math.round(p.tsumogiri * 100) + '%',
-      note: p.tsumogiri > 0.6 ? '（常常摸到就切，手牌比较顺）' : '（手切多，说明常在换张做牌）'
+      note: p.tsumogiri > 0.65 ? '（常常摸到就切，手牌比较顺）'
+        : (p.tsumogiri < 0.35 ? '（手切多，说明常在换张做牌）' : '（摸切和手切差不多）')
     });
     var hotTxt = p.hot.length ? p.hot.map(function (x) { return '#' + x.tile + '×' + Math.round(x.count); }).join(' ') : '还没有';
     rows.push({ label: '他常胡的牌', value: hotTxt, note: '（电脑会重点防这几张）' });
