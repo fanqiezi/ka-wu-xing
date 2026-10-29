@@ -45,6 +45,9 @@
     threatNeedMul: 1.6,     // 否决时把门槛抬高的倍数
     lookahead: 1,           // 前瞻层数（P2 起 hard 用 2）
     fanBias: 0,             // 番型倾向（0 = 只看牌效；>0 才开始为番型留牌）
+    fanBiasKawuxing: 0,     // 只偏好「卡五」听口（胡 5筒/5条 嵌张）
+    fanBiasQingyise: 0,     // 只偏好清一色
+    fanBiasQidui: 0,        // 只偏好七对
     // ---- 困难档才用的评分项（普通档全部为 0 / false，行为与旧版一致）----
     dangerW: 0,             // 切出去这张牌的危险度权重
     leftRiskW: 0,           // 「剩下的牌之后好不好打」的权重（第 2 层）
@@ -83,6 +86,7 @@
       dangerW: 40,                // 轻量避铳（大了会明显掉分）
       leftRiskW: 20,
       waitQualityW: 90,           // 主要涨分项：优先留好形听牌
+      fanBiasKawuxing: 60,        // 只偏好「卡五」听口（实测：卡五成牌 ×3，平均分不降）
       fanBias: 0,                 // 番型倾向（按 A/B 标定填）
       retreat: true,              // 退向听只在极端局面（见下面阈值）
       retreatWall: 6,
@@ -106,6 +110,7 @@
       dangerW: 50,
       leftRiskW: 25,
       waitQualityW: 100,
+      fanBiasKawuxing: 60,
       fanBias: 0,
       retreat: true,
       retreatWall: 6,
@@ -293,7 +298,10 @@
     var waits = R.waitingTiles(hand13, melds);
     if (waits.length) {
       var info = bestTypeInfo(hand13, melds, waits, rules);
-      return Math.max(1, Math.min(info.fan || 1, 16));
+      return {
+        fan: Math.max(1, Math.min(info.fan || 1, 16)),
+        names: (info.names || []).slice()
+      };
     }
     // 未听：代理值
     var counts = T.countsOf(hand13);
@@ -317,8 +325,15 @@
     var qidui = Math.min(1, pairs / 7);                 // 0~1
     var pengpeng = Math.min(1, (triples + pairs * 0.4) / 4);
     var honorPenalty = honors > 0 ? 0 : 1;              // 没字牌才可能是清一色
-    return 1 + 4 * Math.pow(qingyise * (0.35 + 0.65 * honorPenalty), 2) +
-      3 * qidui * qidui + 2 * pengpeng;
+    var proxyNames = [];
+    if (qingyise >= 0.8 && honorPenalty === 0) proxyNames.push('清一色');
+    if (qidui >= 0.6) proxyNames.push('七对');
+    if (pengpeng >= 0.6) proxyNames.push('碰碰胡');
+    return {
+      fan: 1 + 4 * Math.pow(qingyise * (0.35 + 0.65 * honorPenalty), 2) +
+        3 * qidui * qidui + 2 * pengpeng,
+      names: proxyNames
+    };
   }
 
   /** 出牌决策；hand 为摸牌后的 14 张（或 3n+2 张）
@@ -380,14 +395,22 @@
       });    }
 
     // 番型倾向（困难/成长档）：只对排名靠前的几张算真实番，避免每张都跑 scoreWin
-    if (best && p.fanBias) {
+    if (best && (p.fanBias || p.fanBiasKawuxing || p.fanBiasQingyise || p.fanBiasQidui)) {
       scored.sort(function (a, b) { return b.total - a.total; });
       var topN = Math.min(3, scored.length);
       var bestFan = null;
       for (var fi = 0; fi < topN; fi++) {
         var fc = scored[fi];
-        var fan = fanPotential(fc.rest, melds, remain, view.rules);
-        fc.total += (fan - 1) * p.fanBias;      // 屁胡（1 番）不加成，够大才值得等
+        var fp = fanPotential(fc.rest, melds, remain, view.rules);
+        var bonus = (fp.fan - 1) * p.fanBias;      // 屁胡（1 番）不加成，够大才值得等
+        var nm = fp.names || [];
+        if (p.fanBiasKawuxing && nm.indexOf('卡五星') >= 0) bonus += p.fanBiasKawuxing;
+        if (p.fanBiasQingyise && nm.indexOf('清一色') >= 0) bonus += p.fanBiasQingyise;
+        if (p.fanBiasQidui &&
+          (nm.indexOf('七对') >= 0 || nm.indexOf('龙七对') >= 0 || nm.indexOf('双龙七对') >= 0)) {
+          bonus += p.fanBiasQidui;
+        }
+        fc.total += bonus;
         if (!bestFan || fc.total > bestFan.total) bestFan = fc;
       }
       if (bestFan) best = bestFan;
@@ -861,6 +884,7 @@
     opponentThreat: opponentThreat,
     dangerOf: dangerOf,
     leftoverDanger: leftoverDanger,
+    fanPotential: fanPotential,
     kongPayoff: kongPayoff,
     LIANGDAO: LIANGDAO,
     // 难度档

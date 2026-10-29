@@ -1520,6 +1520,26 @@ function playOne(seed, stats) {
     }
   });
 
+  test('番型潜力：能认出「卡五」听口，并按番型分开加权（卡五/清一色/七对）', () => {
+    const AI = require('../js/ai.js');
+    // 13 张听 5筒（嵌张 4-6）→ 卡五
+    const kawuHand = H('123456789t 46t 11b');
+    const kw = AI.fanPotential(kawuHand, [], null, R.DEFAULT_RULES);
+    assert.ok(kw.fan >= 1, '应有番数');
+    assert.ok(kw.names.indexOf('卡五星') >= 0, '应该认出卡五：' + JSON.stringify(kw.names));
+
+    // 13 张听 2/5 条（两面/边张，都不是嵌张 5 条）→ 不该算卡五
+    const plainHand = H('123456789t 13b 11b');
+    const pl = AI.fanPotential(plainHand, [], null, R.DEFAULT_RULES);
+    assert.ok(pl.names.indexOf('卡五星') < 0, '不该误判卡五：' + JSON.stringify(pl.names));
+
+    // 控制项都在 profile 里（默认全 0，普通档不会用）
+    const n = AI.profileOf('normal');
+    assert.strictEqual(n.fanBiasKawuxing, 0);
+    assert.strictEqual(n.fanBiasQingyise, 0);
+    assert.strictEqual(n.fanBiasQidui, 0);
+  });
+
   /* ------------------------------------------------------------------ */
   group('对局记录 / 统计');
 
