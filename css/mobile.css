@@ -381,15 +381,26 @@ body.layout-mobile.layout-portrait .seat-opp .row.discards { overflow: visible; 
 /* ============================================================
    触摸交互
    ============================================================ */
-/* 回放：手机上铺满、按钮加大、方框收紧 */
+/* 回放：手机上铺满、按钮加大、牌尽量大（14 张也放得下） */
 body.layout-mobile .replay-host { padding: 0; align-items: stretch; }
 body.layout-mobile .replay-panel {
-  width: 100%; max-height: none; border-radius: 0; padding: 8px 8px calc(8px + var(--safe-b));
+  width: 100%; max-height: none; border-radius: 0;
+  padding: 6px 6px calc(6px + var(--safe-b)); gap: 5px;
 }
-body.layout-mobile .replay-bar .btn { padding: 7px 10px; font-size: 12px; min-height: 34px; }
-body.layout-mobile .replay-turn { max-width: 46vw; }
-body.layout-mobile .rp-tile { width: 19px !important; height: 27px !important; }
-body.layout-mobile .replay-wall { max-height: 34vh; }
+body.layout-mobile .replay-head { font-size: 16px; }
+body.layout-mobile .replay-head .btn { padding: 7px 14px; font-size: 13px; }
+body.layout-mobile .replay-status { font-size: 12px; gap: 8px; }
+body.layout-mobile .replay-body { gap: 5px; padding: 2px 0; }
+body.layout-mobile .rp-seat { padding: 4px 5px; gap: 3px; }
+body.layout-mobile .rp-name { font-size: 13px; }
+body.layout-mobile .rp-row { gap: 2px; }
+body.layout-mobile .rp-row .row-label { min-width: 26px; font-size: 9.5px; padding-top: 9px; }
+body.layout-mobile .rp-tile { width: 22px !important; height: 31px !important; }
+body.layout-mobile .replay-bar { gap: 5px; }
+body.layout-mobile .replay-bar .btn { padding: 8px 11px; font-size: 13px; min-height: 38px; }
+body.layout-mobile .replay-turn { max-width: 52vw; font-size: 12px; padding: 8px; }
+body.layout-mobile .replay-wall { max-height: 30vh; }
+body.layout-mobile .replay-wall-head { font-size: 12px; }
 
 body.layout-mobile .tile.picked {
   transform: translateY(-10px);

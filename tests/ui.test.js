@@ -942,7 +942,12 @@ function boot(seed) {
 
     const built = ui.buildReplayFrames(h.replay, h.round);
     assert.ok(built.frames.length >= 3, '至少「发牌 + 若干步」，实际 ' + built.frames.length);
+    // 巡的落点：一巡 = 三家各摸打一次，跳巡落在「你的回合、摸完牌之后」
     assert.ok(built.turns.length >= 1, '应该有巡可以跳转');
+    built.turns.forEach(step => {
+      assert.ok(/ 摸 /.test(built.frames[step].text) && built.frames[step].text.indexOf('你') === 0,
+        '每一巡的落点都该是「你 摸 X」，实际：' + built.frames[step].text);
+    });
 
     // 第 0 帧 = 刚发牌：三家各 13 张
     const f0 = built.frames[0];

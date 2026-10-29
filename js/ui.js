@@ -1398,7 +1398,8 @@
       if (ev.t === 'draw') {
         drawnCount++;
         addTileTo(hands[ev.seat], ev.tile);
-        turns.push(frames.length);
+        // 一巡 = 三家各摸打一次；跳巡的落点放在「你的回合、摸完牌之后」
+        if (ev.seat === 0) turns.push(frames.length);
         push(n + (ev.fromKong ? ' 杠后补牌 ' : ' 摸 ') + tn);
       } else if (ev.t === 'discard') {
         removeTileFrom(hands[ev.seat], ev.tile);
@@ -1409,7 +1410,6 @@
         removeTileFrom(hands[ev.seat], ev.tile);
         melds[ev.seat].push({ kind: 'pong', tile: ev.tile });
         if (ev.from !== null && ev.from !== undefined) removeTileFrom(discards[ev.from], ev.tile);
-        turns.push(frames.length);
         push(n + ' 碰 ' + tn);
       } else if (ev.t === 'ankong' || ev.t === 'zhigang' || ev.t === 'addkong') {
         var kind = ev.t === 'ankong' ? 'ankong' : (ev.t === 'zhigang' ? 'zhigang' : 'mingkong');
@@ -1445,7 +1445,7 @@
 
   function replayTurnOptions() {
     if (!replay) return '';
-    var html = '<option value="0">第 0 巡（发牌）</option>';
+    var html = '<option value="0">开局（发牌）</option>';
     replay.turns.forEach(function (step, i) {
       html += '<option value="' + step + '">第 ' + (i + 1) + ' 巡 · ' +
         replay.frames[step].text.replace(/</g, '') + '</option>';
@@ -1472,19 +1472,23 @@
     if (!host) return;
     if (!host.dataset.built) {
       host.dataset.built = '1';
+      // 电脑端不用「按住」：牌山常显，所以不放这个按钮
+      var wallBtn = isMobileLayout()
+        ? '<button class="btn tiny" data-rp="wall">牌山（按住）</button>'
+        : '';
       host.innerHTML =
         '<div class="replay-panel">' +
         '  <div class="replay-head"><span id="replay-title">回放</span>' +
-        '    <button class="btn tiny ghost" data-rp="exit">退出</button></div>' +
+        '    <button class="btn ghost" data-rp="exit">退出</button></div>' +
         '  <div class="replay-status"><span id="replay-step"></span><span id="replay-text"></span></div>' +
         '  <div class="replay-body" id="replay-body"></div>' +
         '  <div class="replay-wall" id="replay-wall" hidden></div>' +
         '  <div class="replay-bar">' +
-        '    <button class="btn tiny" data-rp="prev">上一步</button>' +
-        '    <button class="btn tiny primary" data-rp="play" id="replay-play">播放</button>' +
-        '    <button class="btn tiny" data-rp="next">下一步</button>' +
-        '    <button class="btn tiny" data-rp="speed" id="replay-speed">慢速 3s</button>' +
-        '    <button class="btn tiny" data-rp="wall">牌山（按住）</button>' +
+        '    <button class="btn" data-rp="prev">上一步</button>' +
+        '    <button class="btn primary" data-rp="play" id="replay-play">播放</button>' +
+        '    <button class="btn" data-rp="next">下一步</button>' +
+        '    <button class="btn" data-rp="speed" id="replay-speed">慢速 3s</button>' +
+        wallBtn +
         '    <select id="replay-turn" class="replay-turn"></select>' +
         '  </div>' +
         '</div>';
@@ -1584,7 +1588,8 @@
     var sel = $('replay-turn');
     if (sel) sel.value = String(replayCurrentTurn());
     if (replay.playing) scrollReplayToBottom();
-    if (!replay.playing) showReplayWall(false);
+    // 电脑端牌山常显（每次刷新都跟着当前步更新）；手机版只在按住时显示
+    showReplayWall(false);
   }
 
   function scrollReplayToBottom() {
@@ -1593,17 +1598,22 @@
     body.scrollTop = body.scrollHeight;
   }
 
+  /**
+   * 牌山：手机版「按住才显示」，电脑版**常显**（不用按）。
+   * @param {boolean} on 手机版是否按住
+   */
   function showReplayWall(on) {
     var box = $('replay-wall');
     if (!box) return;
-    if (!on) { box.hidden = true; box.innerHTML = ''; return; }
-    if (!replay) return;
+    if (!replay) { box.hidden = true; box.innerHTML = ''; return; }
+    var always = !isMobileLayout();          // 电脑端直接显示
+    if (!always && !on) { box.hidden = true; box.innerHTML = ''; return; }
     var f = replay.frames[replay.idx];
     var wall = replay.rep.wall || [];
     var left = Math.max(0, wall.length - f.drawn);
     var rest = wall.slice(0, left);
     var html = '<div class="replay-wall-head">牌山剩余 ' + left + ' 张' +
-      '<span class="muted">（按实际摸牌顺序倒着摸）</span></div>' +
+      '<span class="muted">（按实际摸牌顺序，从末尾往里摸）</span></div>' +
       '<div class="rp-row">' + rest.map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
     box.innerHTML = html;
     box.hidden = false;
