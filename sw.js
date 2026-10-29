@@ -17,6 +17,7 @@ var SHELL = [
   './js/tiles.js',
   './js/rules.js',
   './js/ai.js',
+  './js/memory.js',
   './js/game.js',
   './js/stats.js',
   './js/ui.js',

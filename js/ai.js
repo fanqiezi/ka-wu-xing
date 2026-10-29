@@ -83,6 +83,7 @@
       dangerW: 40,                // 轻量避铳（大了会明显掉分）
       leftRiskW: 20,
       waitQualityW: 90,           // 主要涨分项：优先留好形听牌
+      fanBias: 0,                 // 番型倾向（按 A/B 标定填）
       retreat: true,              // 退向听只在极端局面（见下面阈值）
       retreatWall: 6,
       dangerHigh: 0.85,
@@ -105,6 +106,7 @@
       dangerW: 50,
       leftRiskW: 25,
       waitQualityW: 100,
+      fanBias: 0,
       retreat: true,
       retreatWall: 6,
       dangerHigh: 0.85,
@@ -280,6 +282,45 @@
     return n ? sum / n : 0;
   }
 
+  /* ------------------------------------------------------------------ *
+   * 番型潜力（只有困难/成长档用）：这手牌「往大了做」值多少番
+   *
+   * 听牌时直接算真实的最大番（复用亮倒用的 bestTypeInfo，1~3 个听张，成本可控）；
+   * 没听时用便宜代理：清一色进度 / 七对进度 / 对子密度，估个等效番。
+   * 注意：这不改变「是不是屁胡」的判定，只是给留牌多加一项偏好。
+   * ------------------------------------------------------------------ */
+  function fanPotential(hand13, melds, remain, rules) {
+    var waits = R.waitingTiles(hand13, melds);
+    if (waits.length) {
+      var info = bestTypeInfo(hand13, melds, waits, rules);
+      return Math.max(1, Math.min(info.fan || 1, 16));
+    }
+    // 未听：代理值
+    var counts = T.countsOf(hand13);
+    var total = hand13.length || 1;
+    var suitCount = [0, 0, 0], honors = 0, pairs = 0, triples = 0;
+    for (var t = 0; t < TT; t++) {
+      var c = counts[t];
+      if (!c) continue;
+      if (T.isHonor(t)) honors += c;
+      else suitCount[T.suitOf(t)] += c;
+      if (c >= 2) pairs++;
+      if (c >= 3) triples++;
+    }
+    (melds || []).forEach(function (m) {
+      if (T.isHonor(m.tile)) honors += 3;
+      else suitCount[T.suitOf(m.tile)] += 3;
+      triples++;
+    });
+    var maxSuit = Math.max(suitCount[0], suitCount[1], suitCount[2]);
+    var qingyise = maxSuit / total;                     // 0~1
+    var qidui = Math.min(1, pairs / 7);                 // 0~1
+    var pengpeng = Math.min(1, (triples + pairs * 0.4) / 4);
+    var honorPenalty = honors > 0 ? 0 : 1;              // 没字牌才可能是清一色
+    return 1 + 4 * Math.pow(qingyise * (0.35 + 0.65 * honorPenalty), 2) +
+      3 * qidui * qidui + 2 * pengpeng;
+  }
+
   /** 出牌决策；hand 为摸牌后的 14 张（或 3n+2 张）
    *  view.allowed 存在时只在这几张里选（亮倒锁死、或不能打亮倒者的听张） */
   function chooseDiscard(view) {
@@ -298,6 +339,13 @@
     // 对手威胁：越到尾盘、对手副露越多，越可能已经听牌 → 出牌要更保守（降低放铳率）
     var threat = opponentThreat(view);
     var safetyW = 1 + p.safetyThreatK * Math.max(0, threat - 0.6);
+    // 成长型：按「人类画像」调整（只学公开行为；置信度低时几乎不生效）
+    var hm = p.learn ? view.humanModel : null;
+    var hmConf = hm ? (hm.confidence || 0) : 0;
+    var hmAgg = hm ? (hm.aggression || 0) : 0;
+    var hmHot = {};
+    if (hm && hm.hot) hm.hot.slice(0, 3).forEach(function (x) { hmHot[x.tile] = 1; });
+    var dangerMul = 1 + 0.35 * hmAgg * hmConf;      // 对激进人类更谨慎
     var jitter = view.jitter === undefined ? p.jitter : view.jitter;
     // 退向听防守：尾盘 + 对手威胁大时，宁可多一向听也要打安全牌
     var shantenW = 1000;
@@ -317,15 +365,32 @@
       var safety = seen >= 2 ? p.safetySeen2 : (seen === 1 ? p.safetySeen1 : 0);
 
       var total = -ev.shanten * shantenW + ev.score - keepValue * p.keepValueW + safety * safetyW;
-      if (p.dangerW) total -= dangerOf(view, t) * p.dangerW;              // 这张牌有多危险
-      if (p.leftRiskW) total -= leftoverDanger(view, rest) * p.leftRiskW; // 剩下的牌之后好不好打（第 2 层）
+      if (p.dangerW) total -= dangerOf(view, t) * p.dangerW * dangerMul;  // 这张牌有多危险
+      if (p.leftRiskW) total -= leftoverDanger(view, rest) * p.leftRiskW * dangerMul;
       if (p.waitQualityW && ev.shape) total += ev.shape * p.waitQualityW; // 听牌质量（几面听）
+      if (hmHot[t]) total -= 70 * hmConf;                                // 他常胡这张 → 更不想切
       if (jitter) total += ((view.rng ? view.rng() : Math.random()) - 0.5) * jitter;
 
       if (!best || total > best.total) {
         best = { tile: t, total: total, ev: ev };
       }
-      scored.push({ tile: t, total: total, ev: ev, danger: p.dangerW || p.retreat ? dangerOf(view, t) : 0 });
+      scored.push({
+        tile: t, total: total, ev: ev, rest: rest,
+        danger: (p.dangerW || p.retreat) ? dangerOf(view, t) : 0
+      });    }
+
+    // 番型倾向（困难/成长档）：只对排名靠前的几张算真实番，避免每张都跑 scoreWin
+    if (best && p.fanBias) {
+      scored.sort(function (a, b) { return b.total - a.total; });
+      var topN = Math.min(3, scored.length);
+      var bestFan = null;
+      for (var fi = 0; fi < topN; fi++) {
+        var fc = scored[fi];
+        var fan = fanPotential(fc.rest, melds, remain, view.rules);
+        fc.total += (fan - 1) * p.fanBias;      // 屁胡（1 番）不加成，够大才值得等
+        if (!bestFan || fc.total > bestFan.total) bestFan = fc;
+      }
+      if (bestFan) best = bestFan;
     }
 
     // 退向听防守（困难档）：尾盘 + 对手威胁大时，宁可多一向听也别打危险牌
@@ -735,6 +800,11 @@
     var threat = opponentThreat(view);
     var vetoed = !!(p.threatVeto && threat >= p.threatAt);
     if (vetoed) need *= p.threatNeedMul;
+    // 成长型：对「激进的人类」更谨慎（他快听、你亮倒就是在送听口）
+    if (p.learn && view.humanModel) {
+      var hm = view.humanModel;
+      need *= 1 + 0.15 * (hm.aggression || 0) * (hm.confidence || 0);
+    }
     // 困难档：EV 落在临界带里用混合策略（避免阈值被对手反推），带外用确定判断
     var yes = plan.score > need;
     var mixed = false;

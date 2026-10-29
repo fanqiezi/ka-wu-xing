@@ -11,7 +11,7 @@ const assert = require('assert');
 const { createDom } = require('./dom-shim.js');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['js/tiles.js', 'js/rules.js', 'js/ai.js', 'js/game.js', 'js/stats.js', 'js/ui.js', 'js/main.js'];
+const FILES = ['js/tiles.js', 'js/rules.js', 'js/ai.js', 'js/memory.js', 'js/game.js', 'js/stats.js', 'js/ui.js', 'js/main.js'];
 
 let passed = 0, failed = 0;
 const failures = [];
@@ -37,6 +37,15 @@ function boot(seed) {
   win.window = win;
   win.self = win;
   win.globalThis = win;
+  // 预置一份「成长型」记忆，验证它会被读进来（真实浏览器里来自上次对局）
+  dom.localStorage.setItem('kwx.ai.memory.v1', JSON.stringify({
+    version: 1, games: 25, updatedAt: Date.now(),
+    human: {
+      rounds: 25, discards: 500, tsumogiri: 380, pongs: 12, kongs: 3,
+      winTiles: { '3': 6, '11': 4 }, dealIn: { '5': 3 }, fans: { '2': 9, '4': 6 },
+      winDiscards: 600
+    }
+  }));
   // 用可复现的随机数替换 Math.random，保证测试稳定
   const fakeMath = Object.create(Math);
   fakeMath.random = seededRng(seed === undefined ? 20250521 : seed);
@@ -57,7 +66,7 @@ function boot(seed) {
 
   test('index.html 里的脚本都能加载，且 KWX 命名空间完整', () => {
     assert.ok(win.KWX, 'window.KWX 未挂载');
-    ['Tiles', 'Rules', 'AI', 'Game', 'Stats'].forEach(k => assert.ok(win.KWX[k], '缺少 KWX.' + k));
+    ['Tiles', 'Rules', 'AI', 'Game', 'Stats', 'Memory'].forEach(k => assert.ok(win.KWX[k], '缺少 KWX.' + k));
     assert.ok(win.KWX_UI, '缺少 KWX_UI');
   });
 
@@ -1037,6 +1046,28 @@ function boot(seed) {
     // 窗口尺寸变化不再自动改布局（重力感应已停用）
     if (win.dispatch) { win.dispatch('resize'); win.dispatch('orientationchange'); }
     assert.strictEqual(ui.getLayout(), 'portrait', 'resize / orientationchange 不该自己切布局');
+  });
+
+  await atest('成长型：对局记录里能看到「成长档案」，并且能一键清空', async () => {
+    const ui = win.KWX_UI;
+    const mem = ui.getMemory();
+    assert.ok(mem && mem.human.rounds === 25, '启动时应该从 localStorage 读出记忆，实际 ' +
+      (mem && mem.human && mem.human.rounds));
+
+    dom.byId['btn-history'].click();
+    const host = dom.byId['modal-host'];
+    const html = host.children.map(c => c.innerHTML).join('');
+    assert.ok(html.indexOf('成长档案') >= 0, '对局记录里应该有「成长档案」一栏');
+    assert.ok(html.indexOf('累计局数') >= 0, '应该显示累计局数');
+    assert.ok(html.indexOf('摸切率') >= 0, '应该显示摸切率');
+    assert.ok(html.indexOf('他常胡的牌') >= 0, '应该显示「他常胡的牌」（对手模型）');
+    assert.ok(dom.byId['btn-clear-memory'], '应该有「清空记忆」按钮');
+
+    // 清空
+    ui.clearMemory();
+    assert.strictEqual(dom.localStorage.getItem('kwx.ai.memory.v1'), null, 'localStorage 里的记忆该被删掉');
+    assert.strictEqual(ui.getMemory().human.rounds, 0, '内存里的记忆也该清空');
+    dom.byId['modal-close'] && dom.byId['modal-close'].click();
   });
 
   await atest('电脑难度：设置里可选三档，保存后立刻作用到牌局并写进 localStorage', async () => {

@@ -8,6 +8,8 @@
   var R = window.KWX.Rules;
   var AI = window.KWX.AI;
   var Game = window.KWX.Game;
+  var Memory = window.KWX.Memory;
+  var aiMemory = null;          // 「成长型」的记忆（启动时从 localStorage 读）
 
   var SETTING_DEFS = [
     {
@@ -101,6 +103,7 @@
 
   function init() {
     loadSettings();          // 上次保存过设置就恢复（含电脑难度）
+    if (Memory) aiMemory = Memory.load();   // 成长型电脑的记忆
     el.seat0 = $('seat-0');
     el.seat1 = $('seat-1');
     el.seat2 = $('seat-2');
@@ -224,7 +227,10 @@
     pendingAsk = null;
     queuedDiscard = null;
     el.actionbar.innerHTML = '';
-    game = new Game({ rules: settings, speed: settings.speed, aiDifficulty: settings.aiDifficulty });
+    game = new Game({
+      rules: settings, speed: settings.speed, aiDifficulty: settings.aiDifficulty,
+      memory: aiMemory
+    });
     bindGame(game);
     render();
     runRound(game);
@@ -238,6 +244,11 @@
   }
 
   function bindGame(g) {
+    g.on('memory', function (payload) {
+      // 成长型记住了东西 → 立刻落盘（局末才触发，写盘频率很低）
+      if (payload && payload.memory) aiMemory = payload.memory;
+      if (Memory && aiMemory) Memory.save(null, aiMemory);
+    });
     g.on('change', function () {
       if (g !== game) return;
       render();
@@ -1252,6 +1263,50 @@
   function pct(v) { return (v * 100).toFixed(0) + '%'; }
   function signed(v) { return (v > 0 ? '+' : '') + v; }
 
+  /** 清空「成长型」的记忆（界面上有按钮，测试也直接调它） */
+  function clearAiMemory() {
+    if (!Memory) return;
+    Memory.clear();
+    aiMemory = Memory.blank();
+    if (game) {
+      game.aiMemory = aiMemory;
+      game._humanModel = Memory.profile(aiMemory);
+    }
+  }
+
+  /**
+   * 「成长型」电脑的成长档案：它只记你的**公开行为**
+   * （切牌方式、碰杠、胡牌与放铳的牌），据此调整防守与亮倒门槛。
+   */
+  function growthBlockHtml(g) {
+    if (!Memory || !aiMemory) return '';
+    var isGrowth = AI.profileOf(g ? g.aiDifficulty : 'normal').learn === true;
+    var rounds = (aiMemory.human && aiMemory.human.rounds) || 0;
+    if (!isGrowth && !rounds) return '';
+    var html = '<h3>成长型电脑的成长档案</h3>';
+    if (!isGrowth) {
+      html += '<p class="muted">当前难度不是「成长型」，这份记忆先存着不用；' +
+        '把难度切到成长型就会接着积累。</p>';
+    }
+    if (!rounds) {
+      html += '<p class="muted">还没有记忆：打几局（成长型）它就开始记了。</p>';
+      return html;
+    }
+    html += '<div class="table-scroll"><table class="pay-table"><tr><th>项目</th>' +
+      '<th style="text-align:right">数值</th><th>说明</th></tr>';
+    Memory.describe(aiMemory).forEach(function (row) {
+      html += '<tr><td>' + row.label + '</td>' +
+        '<td class="num">' + row.value + '</td>' +
+        '<td class="muted">' + (row.note || '') + '</td></tr>';
+    });
+    html += '</table></div>';
+    html += '<p class="muted">记忆只存在本机（localStorage），跨对局、跨刷新都保留；' +
+      '切到普通/困难不会清空它。它只学<b>公开信息</b>（牌河、副露、摸切/手切、胡牌结果），' +
+      '不会看你的手牌。</p>';
+    html += '<div class="row"><button class="btn tiny ghost" id="btn-clear-memory">清空记忆</button></div>';
+    return html;
+  }
+
   function openHistory() {
     var g = game;
     var players = g ? g.players : [];
@@ -1344,6 +1399,9 @@
       html += '</table></div>';
     }
 
+    // 「成长型」电脑的成长档案（它到底从你身上学到了什么）
+    html += growthBlockHtml(g);
+
     var box = openModal(html, [
       { label: '关闭', cls: 'primary', onClick: closeModal }
     ]);
@@ -1358,6 +1416,16 @@
         var btn = e.target && e.target.closest ? e.target.closest('[data-replay]') : null;
         if (!btn) return;
         openReplay(parseInt(btn.dataset.replay, 10));
+      });
+    }
+    // 「清空记忆」按钮（单独挂，方便测试直接点）
+    var clearBtn = $('btn-clear-memory');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        clearAiMemory();
+        closeModal();
+        toast('记忆已清空');
+        openHistory();
       });
     }
   }
@@ -1411,7 +1479,8 @@
         drawnCount++;
         addTileTo(hands[ev.seat], ev.tile);
         // 一巡 = 三家各摸打一次；跳巡的落点放在「你的回合、摸完牌之后」
-        if (ev.seat === 0) turns.push(frames.length);
+        // （杠后补牌是同一巡里的补张，不算新的一巡）
+        if (ev.seat === 0 && !ev.fromKong) turns.push(frames.length);
         push(n + (ev.fromKong ? ' 杠后补牌 ' : ' 摸 ') + tn, { drew: { seat: ev.seat, tile: ev.tile } });
       } else if (ev.t === 'discard') {
         removeTileFrom(hands[ev.seat], ev.tile);
@@ -1888,6 +1957,9 @@
     closeReplay: closeReplay,
     getReplay: function () { return replay; },
     buildReplayFrames: function (rep, roundNo) { return replayFrames(rep, roundNo); },
+    // 「成长型」记忆：读 / 清空
+    getMemory: function () { return aiMemory; },
+    clearMemory: clearAiMemory,
     // 手动旋转屏幕（不再跟随重力感应）
     rotateLayout: rotateLayout
   };

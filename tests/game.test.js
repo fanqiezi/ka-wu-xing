@@ -1491,6 +1491,35 @@ function playOne(seed, stats) {
     assert.strictEqual(AI.profileOf('hard').mixBand > 0, true, '困难档应启用混合带');
   });
 
+  await testAsync('成长型：每局都会记下人类的公开行为（普通/困难不记）', async () => {
+    const Memory = require('../js/memory.js');
+    // 成长型：打一局，记忆里应该多一局
+    const g = new Game({
+      speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: 'growth',
+      memory: Memory.blank()
+    });
+    g.players.forEach(p => { p.isAI = true; });
+    await g.startRound();
+    assert.strictEqual(g.aiMemory.human.rounds, 1, '应该记了 1 局');
+    assert.ok(g.aiMemory.human.discards > 0, '应该记下切了几张牌');
+    assert.ok(g.aiMemory.human.tsumogiri >= 0, '摸切次数应该是数字');
+    assert.ok(g.aiMemory.human.pongs + g.aiMemory.human.kongs >= 0);
+    const model = g.viewFor(1).humanModel;
+    assert.ok(model && typeof model.aggression === 'number', '成长型视角里应带人类画像');
+    assert.ok(model.confidence > 0, '打完一局后置信度应该 > 0');
+
+    // 普通/困难：不动记忆
+    for (const diff of ['normal', 'hard']) {
+      const g2 = new Game({
+        speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: diff, memory: Memory.blank()
+      });
+      g2.players.forEach(p => { p.isAI = true; });
+      await g2.startRound();
+      assert.strictEqual(g2.aiMemory.human.rounds, 0, diff + ' 不该记记忆');
+      assert.strictEqual(g2.viewFor(1).humanModel, null, diff + ' 视角里不该带人类画像');
+    }
+  });
+
   /* ------------------------------------------------------------------ */
   group('对局记录 / 统计');
 

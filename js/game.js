@@ -8,12 +8,12 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./tiles.js'), require('./rules.js'), require('./ai.js'));
+    module.exports = factory(require('./tiles.js'), require('./rules.js'), require('./ai.js'), require('./memory.js'));
   } else {
     root.KWX = root.KWX || {};
-    root.KWX.Game = factory(root.KWX.Tiles, root.KWX.Rules, root.KWX.AI);
+    root.KWX.Game = factory(root.KWX.Tiles, root.KWX.Rules, root.KWX.AI, root.KWX.Memory);
   }
-})(typeof self !== 'undefined' ? self : this, function (T, R, AI) {
+})(typeof self !== 'undefined' ? self : this, function (T, R, AI, Memory) {
   'use strict';
 
   var PLAYER_NAMES = ['你', '下家', '上家'];
@@ -68,6 +68,9 @@
     this.aiDifficulty = AI.profileOf(options.aiDifficulty || 'normal').key;
     // 可选：按座位单独指定难度（A/B 自对弈统计用；默认跟随全局难度）
     this.aiDifficultyBySeat = options.aiDifficultyBySeat || null;
+    // 「成长型」的记忆（由 UI 从 localStorage 读出来传进来；不传就是空记忆）
+    this.aiMemory = options.memory || (Memory ? Memory.blank() : null);
+    this._humanModel = Memory ? Memory.profile(this.aiMemory) : null;
     // 电脑的「亮倒奖惩记忆」：每个座位一套，按牌型记「亮倒后赢了/输了」的倾向
     this.liangdaoLearn = [0, 1, 2].map(function () { return AI.newLearnTable(); });
     this.playing = false;
@@ -193,6 +196,8 @@
       rules: this.rules,
       diff: (this.aiDifficultyBySeat && this.aiDifficultyBySeat[seat]) || this.aiDifficulty,
       gangChain: this.gangChain,                 // 杠链（杠分收益要用）
+      humanModel: AI.profileOf((this.aiDifficultyBySeat && this.aiDifficultyBySeat[seat]) || this.aiDifficulty).learn
+        ? this._humanModel : null,               // 「成长型」才带对手画像
       liangdaoLearn: this.liangdaoLearn[seat],   // 该座位的亮倒奖惩记忆
       human: seat === 0,
       rng: this.rng
@@ -292,6 +297,43 @@
     });
     this._scoreBefore = null;
     this.emit('history', { round: this.history.length });
+    this.noteMemory(result);
+  };
+
+  /**
+   * 「成长型」学着记这一局：只记人类的**公开行为**
+   * （切了多少张、其中几张是摸切、碰杠几次、胡的是什么牌/几番、谁放了他的铳）
+   */
+  Game.prototype.noteMemory = function (result) {
+    if (!Memory || !this.aiMemory) return;
+    if (AI.profileOf(this.aiDifficulty).learn !== true) return;
+    var h = this.players[0];
+    var pongs = 0, kongs = 0;
+    (h.melds || []).forEach(function (m) {
+      if (m.kind === 'pong') pongs++; else kongs++;
+    });
+    var rec = {
+      discards: h.discards.length,
+      tsumogiri: h.tsumogiriCount || 0,
+      pongs: pongs,
+      kongs: kongs,
+      winDiscards: this.players.reduce(function (s, p) { return s + p.discards.length; }, 0),
+      winTile: null,
+      dealInTile: null,
+      fan: 0
+    };
+    if (result && result.type === 'win') {
+      result.winners.forEach(function (w) {
+        if (w.seat === 0) {
+          rec.winTile = w.winTile;
+          rec.fan = (w.result && w.result.capped) || 0;
+        }
+        if (!w.selfDraw && w.fromSeat === 0) rec.dealInTile = w.winTile;
+      });
+    }
+    Memory.update(this.aiMemory, rec);
+    this._humanModel = Memory.profile(this.aiMemory);
+    this.emit('memory', { memory: this.aiMemory });
   };
 
   /* ============================ 开局 ============================ */
@@ -319,6 +361,7 @@
       p.liangdaoFeature = null;
       p.passWin = false;
       p.lastDraw = null;
+      p.tsumogiriCount = 0;      // 本局摸切了几张（成长型记忆要用）
     });
     // 每人 13 张
     for (var k = 0; k < 13; k++) {
@@ -655,6 +698,7 @@
     }
     // 切牌方式：打出的正好是刚摸到的那张 = 摸切；从手牌里挑一张 = 手切
     var tsumogiri = p.lastDraw !== null && tile === p.lastDraw;
+    if (tsumogiri) p.tsumogiriCount = (p.tsumogiriCount || 0) + 1;
     p.hand = without(p.hand, tile, 1);
     p.lastDraw = null;
     p.liangdaoFresh = false;
