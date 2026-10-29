@@ -19,6 +19,75 @@
 
   var TT = T.TILE_TYPES;
 
+  /* ------------------------------------------------------------------ *
+   * 难度档：同一套算法 + 一张权重表（不是三份 AI）
+   *
+   *   normal  普通：牌效 + 粗防守（现物/断张），亮倒只算 EV / 轮次 / 听牌枚数
+   *   hard    困难：2 层评估（打出后看下一巡进张与危险度）、逐张危险度、
+   *                 对手威胁否决亮倒、杠的破坏性权衡、临界值混策
+   *   growth  成长型：困难 + 只学「人类玩家」的公开行为，记忆跨对局/跨刷新
+   *
+   * 普通档的权重 = 历史默认值，保证行为与旧版逐位一致（旧测试全部不变）。
+   * ------------------------------------------------------------------ */
+  var NORMAL_PROFILE = {
+    key: 'normal', label: '普通',
+    jitter: 6,              // 决策噪声（越大越随意）
+    safetyThreatK: 1.8,     // 对手威胁对「安全分」的放大量
+    safetySeen2: 6,         // 牌河已见 2 张以上的安全分
+    safetySeen1: 2,
+    keepValueW: 3.2,        // 留牌价值权重（越大越爱切孤张）
+    pongScoreMul: 1.05,     // 碰牌的进张质量门槛（相对当前手牌）
+    pongMaxMelds: 3,        // 已有几副副露就不再碰
+    liangdaoNeedMul: 1.0,   // 亮倒门槛倍数
+    pitHuNeedMul: 2.0,      // 屁胡亮倒的额外门槛
+    threatVeto: false,      // 对手明显已听 → 否决亮倒
+    threatAt: 1.40,         // 「明显已听」的威胁阈值
+    threatNeedMul: 1.6,     // 否决时把门槛抬高的倍数
+    lookahead: 1,           // 前瞻层数（P2 起 hard 用 2）
+    fanBias: 0,             // 番型倾向（0 = 只看牌效；>0 才开始为番型留牌）
+    learn: false            // 是否启用「学人类」的记忆（P3）
+  };
+
+  var DIFFICULTY = {
+    normal: NORMAL_PROFILE,
+    // 困难：少一点随机、防守更狠、亮倒更挑剔（对手已听时直接否决）
+    hard: Object.assign({}, NORMAL_PROFILE, {
+      key: 'hard', label: '困难',
+      jitter: 2,
+      safetyThreatK: 2.6,
+      safetySeen2: 8,
+      safetySeen1: 3,
+      pongScoreMul: 1.0,
+      liangdaoNeedMul: 0.9,
+      threatVeto: true,
+      lookahead: 2
+    }),
+    // 成长型：困难 + 记忆（记忆内容在 P3 落地，这里先把开关和档位准备好）
+    growth: Object.assign({}, NORMAL_PROFILE, {
+      key: 'growth', label: '成长型',
+      jitter: 2,
+      safetyThreatK: 2.8,
+      safetySeen2: 8,
+      safetySeen1: 3,
+      pongScoreMul: 1.0,
+      liangdaoNeedMul: 0.9,
+      threatVeto: true,
+      lookahead: 2,
+      learn: true
+    })
+  };
+
+  var DIFFICULTY_LIST = [
+    { key: 'normal', label: '普通' },
+    { key: 'hard', label: '困难' },
+    { key: 'growth', label: '成长型（会学习）' }
+  ];
+
+  /** 取难度档（未知名字一律回到普通） */
+  function profileOf(name) {
+    return DIFFICULTY[name] || DIFFICULTY.normal;
+  }
+
   function distinct(tiles) {
     var seen = {}, out = [];
     for (var i = 0; i < tiles.length; i++) {
@@ -104,6 +173,7 @@
     var melds = view.melds || [];
     var remain = view.remain || buildRemain(view);
     var counts = T.countsOf(hand);
+    var p = profileOf(view.diff);
     var options = distinct(hand);
     if (view.allowed) {
       var legal = options.filter(function (t) { return view.allowed.indexOf(t) >= 0; });
@@ -112,7 +182,8 @@
     var best = null;
     // 对手威胁：越到尾盘、对手副露越多，越可能已经听牌 → 出牌要更保守（降低放铳率）
     var threat = opponentThreat(view);
-    var safetyW = 1 + 1.8 * Math.max(0, threat - 0.6);
+    var safetyW = 1 + p.safetyThreatK * Math.max(0, threat - 0.6);
+    var jitter = view.jitter === undefined ? p.jitter : view.jitter;
 
     for (var i = 0; i < options.length; i++) {
       var t = options[i];
@@ -122,10 +193,10 @@
       var keepValue = tileValue(counts, t);
       // 安全性：牌河里出现过的（现物）、以及已被大量打出的牌更安全
       var seen = 4 - remain[t];
-      var safety = seen >= 2 ? 6 : (seen === 1 ? 2 : 0);
+      var safety = seen >= 2 ? p.safetySeen2 : (seen === 1 ? p.safetySeen1 : 0);
 
-      var total = -ev.shanten * 1000 + ev.score - keepValue * 3.2 + safety * safetyW;
-      if (view.jitter) total += ((view.rng ? view.rng() : Math.random()) - 0.5) * view.jitter;
+      var total = -ev.shanten * 1000 + ev.score - keepValue * p.keepValueW + safety * safetyW;
+      if (jitter) total += ((view.rng ? view.rng() : Math.random()) - 0.5) * jitter;
 
       if (!best || total > best.total) {
         best = { tile: t, total: total, ev: ev };
@@ -155,16 +226,17 @@
     var hand = view.hand;
     var melds = view.melds || [];
     var remain = view.remain || buildRemain(view);
+    var p = profileOf(view.diff);
     var cur = R.shanten(hand, melds);
     var after = without(hand, tile, 2);
     var newMelds = melds.concat([{ kind: 'pong', tile: tile }]);
     var best = bestShantenAfterDiscard(after, newMelds, remain);
     if (best.shanten < cur) return true;
     if (best.shanten > cur) return false;
-    // 向听相同：比较进张质量，且已有 3 副副露时慎重（余地小）
+    // 向听相同：比较进张质量，且已有较多副露时慎重（余地小）
     var curEval = evaluateHand(hand, melds, remain);
-    if (melds.length >= 3) return false;
-    return best.score > curEval.score * 1.05;
+    if (melds.length >= p.pongMaxMelds) return false;
+    return best.score > curEval.score * p.pongScoreMul;
   }
 
   /** 是否直杠（手上三张，别人打出第四张） */
@@ -467,11 +539,19 @@
   function liangdaoDecision(view) {
     var plan = liangdaoPlan(view);
     if (!plan) return null;
+    var p = profileOf(view.diff);
     var sitKey = plan.sitKey || plan.key;
     var adj = learnAdj(view.liangdaoLearn, sitKey);
-    var need = LIANGDAO.need / (adj || 1);
-    if (plan.fan === 1) need *= LIANGDAO.pitHuNeedMul;
-    return { plan: plan, need: need, adj: adj, sitKey: sitKey, score: plan.score, yes: plan.score > need };
+    var need = LIANGDAO.need / (adj || 1) * p.liangdaoNeedMul;
+    if (plan.fan === 1) need *= p.pitHuNeedMul;
+    // 困难档：对手已经明显听牌时，亮倒等于把自己的听口送给对手躲 → 显著抬高门槛
+    var threat = opponentThreat(view);
+    var vetoed = !!(p.threatVeto && threat >= p.threatAt);
+    if (vetoed) need *= p.threatNeedMul;
+    return {
+      plan: plan, need: need, adj: adj, sitKey: sitKey, score: plan.score,
+      threat: threat, vetoed: vetoed, yes: plan.score > need
+    };
   }
 
   /** 是否亮倒 */
@@ -512,6 +592,10 @@
     bestTypeInfo: bestTypeInfo,
     opponentThreat: opponentThreat,
     LIANGDAO: LIANGDAO,
+    // 难度档
+    DIFFICULTY: DIFFICULTY,
+    DIFFICULTY_LIST: DIFFICULTY_LIST,
+    profileOf: profileOf,
     buildRemain: buildRemain,
     tileValue: tileValue,
     evaluateHand: evaluateHand

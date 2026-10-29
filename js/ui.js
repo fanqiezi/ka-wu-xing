@@ -10,6 +10,12 @@
   var Game = window.KWX.Game;
 
   var SETTING_DEFS = [
+    {
+      key: 'aiDifficulty', label: '电脑难度', type: 'select', text: true,
+      options: [['normal', '普通'], ['hard', '困难'], ['growth', '成长型（会学习）']],
+      note: '普通＝牌效＋粗防守；困难＝多看一层、算逐张危险度、对手已听时不亮倒；' +
+        '成长型＝困难＋只学你的公开打法，记忆跨对局和刷新都保留。'
+    },
     { key: 'baseScore', label: '底金', type: 'select', options: [[1, '1 分'], [2, '2 分'], [5, '5 分']] },
     { key: 'cap', label: '封顶倍数', type: 'select', options: [[8, '×8 封顶'], [16, '×16 封顶'], [0, '不封顶']] },
     {
@@ -62,6 +68,7 @@
   ];
 
   var settings = {
+    aiDifficulty: 'normal',
     baseScore: 1,
     cap: 8,
     pitHuOnlyZimo: true,
@@ -93,6 +100,7 @@
   function $(id) { return document.getElementById(id); }
 
   function init() {
+    loadSettings();          // 上次保存过设置就恢复（含电脑难度）
     el.seat0 = $('seat-0');
     el.seat1 = $('seat-1');
     el.seat2 = $('seat-2');
@@ -216,7 +224,7 @@
     pendingAsk = null;
     queuedDiscard = null;
     el.actionbar.innerHTML = '';
-    game = new Game({ rules: settings, speed: settings.speed });
+    game = new Game({ rules: settings, speed: settings.speed, aiDifficulty: settings.aiDifficulty });
     bindGame(game);
     render();
     runRound(game);
@@ -1726,18 +1734,53 @@
           var node = $('set-' + def.key);
           if (!node) return;
           if (def.type === 'checkbox') settings[def.key] = node.checked;
+          else if (def.text) settings[def.key] = node.value;        // 文本型 select（难度档）
           else settings[def.key] = parseInt(node.value, 10);
         });
         if (game) {
           game.rules = Object.assign({}, R.DEFAULT_RULES, settings);
           game.speed = settings.speed;
+          game.setDifficulty(settings.aiDifficulty);
         }
+        saveSettings();
         closeModal();
         render();
         toast('设置已保存');
       }
     });
     openModal(html, acts);
+  }
+
+  /* ---------------- 设置持久化（localStorage，失败就退回内存） ---------------- */
+
+  var SETTINGS_KEY = 'kwx.settings.v1';
+
+  function storage() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return null;
+      return localStorage;
+    } catch (e) { return null; }
+  }
+
+  function saveSettings() {
+    var ls = storage();
+    if (!ls) return;
+    try { ls.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* 隐私模式/quota 忽略 */ }
+  }
+
+  function loadSettings() {
+    var ls = storage();
+    if (!ls) return;
+    try {
+      var raw = ls.getItem(SETTINGS_KEY);
+      if (!raw) return;
+      var obj = JSON.parse(raw);
+      if (!obj || typeof obj !== 'object') return;
+      SETTING_DEFS.forEach(function (def) {
+        if (Object.prototype.hasOwnProperty.call(obj, def.key)) settings[def.key] = obj[def.key];
+      });
+      settings.aiDifficulty = AI.profileOf(settings.aiDifficulty).key;
+    } catch (e) { /* 坏数据就当没有 */ }
   }
 
   function openRules() {

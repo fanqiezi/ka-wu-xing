@@ -153,8 +153,20 @@ function createDom(htmlSource) {
   }
 
   var windowListeners = {};
+  // 极简 localStorage（设置持久化 / 以后成长型记忆都要用）
+  var store = {};
+  var localStorage = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+    setItem: function (k, v) { store[k] = String(v); },
+    removeItem: function (k) { delete store[k]; },
+    clear: function () { store = {}; },
+    key: function (i) { return Object.keys(store)[i] || null; },
+    get length() { return Object.keys(store).length; }
+  };
+
   var window = {
     document: document,
+    localStorage: localStorage,
     addEventListener: function (type, fn) {
       (windowListeners[type] = windowListeners[type] || []).push(fn);
     },
@@ -189,7 +201,8 @@ function createDom(htmlSource) {
     byId: byId,
     findAll: findAll,
     hasClass: hasClass,
-    Node: Node
+    Node: Node,
+    localStorage: localStorage
   };
 }
 

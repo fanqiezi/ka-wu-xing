@@ -1039,6 +1039,39 @@ function boot(seed) {
     assert.strictEqual(ui.getLayout(), 'portrait', 'resize / orientationchange 不该自己切布局');
   });
 
+  await atest('电脑难度：设置里可选三档，保存后立刻作用到牌局并写进 localStorage', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    if (g) g.stop();
+
+    dom.byId['btn-settings'].click();
+    const host = dom.byId['modal-host'];
+    const sel = dom.byId['set-aiDifficulty'];
+    assert.ok(sel, '设置里应有「电脑难度」下拉框');
+    assert.strictEqual(sel.value, 'normal', '默认应是普通，实际 ' + sel.value);
+    const options = (host.children.map(c => c.innerHTML).join('').match(/>普通<|>困难<|>成长型（会学习）</g) || []).length;
+    assert.strictEqual(options, 3, '下拉框应有三档，实际 ' + options);
+
+    // 切到「困难」保存
+    sel.value = 'hard';
+    dom.findAll(host, n => dom.hasClass(n, 'btn'))
+      .filter(b => b.textContent === '保存')[0].click();
+    assert.strictEqual(ui.settings.aiDifficulty, 'hard', '设置里应记住困难');
+    assert.strictEqual(ui.getGame().aiDifficulty, 'hard', '当前牌局应立刻切到困难');
+    assert.strictEqual(ui.getGame().viewFor(1).diff, 'hard', 'AI 视角也应是困难');
+
+    // 持久化
+    const raw = dom.localStorage.getItem('kwx.settings.v1');
+    assert.ok(raw && raw.indexOf('"aiDifficulty":"hard"') >= 0, '应写进 localStorage：' + raw);
+
+    // 改回普通，别影响后面的用例
+    dom.byId['btn-settings'].click();
+    dom.byId['set-aiDifficulty'].value = 'normal';
+    dom.findAll(dom.byId['modal-host'], n => dom.hasClass(n, 'btn'))
+      .filter(b => b.textContent === '保存')[0].click();
+    assert.strictEqual(ui.getGame().aiDifficulty, 'normal');
+  });
+
   await atest('海底捞月番型默认关闭，设置里可以打开', async () => {
     const ui = win.KWX_UI;
     assert.strictEqual(ui.settings.haidiFan, false, '海底捞默认不算番');

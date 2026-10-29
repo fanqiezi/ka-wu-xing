@@ -1327,6 +1327,95 @@ function playOne(seed, stats) {
   })();
 
   /* ------------------------------------------------------------------ */
+  group('电脑难度档（普通 / 困难 / 成长型）');
+
+  test('profileOf：三档齐全，未知名字回到普通（普通权重 = 旧默认值）', () => {
+    const AI = require('../js/ai.js');
+    assert.strictEqual(AI.DIFFICULTY_LIST.length, 3, '应该是三档');
+    assert.deepStrictEqual(AI.DIFFICULTY_LIST.map(d => d.key), ['normal', 'hard', 'growth']);
+    assert.strictEqual(AI.profileOf('hard').key, 'hard');
+    assert.strictEqual(AI.profileOf('不存在的档位').key, 'normal', '未知档位回落到普通');
+    // 普通档的权重就是历史默认值（保证行为不变）
+    const n = AI.profileOf('normal');
+    assert.strictEqual(n.jitter, 6);
+    assert.strictEqual(n.safetyThreatK, 1.8);
+    assert.strictEqual(n.keepValueW, 3.2);
+    assert.strictEqual(n.pongScoreMul, 1.05);
+    assert.strictEqual(n.liangdaoNeedMul, 1);
+    assert.strictEqual(n.pitHuNeedMul, 2.0);
+    assert.strictEqual(n.learn, false);
+    // 困难：噪声更小、防守更狠、会否决亮倒、前瞻 2 层
+    const h = AI.profileOf('hard');
+    assert.ok(h.jitter < n.jitter, '困难档决策噪声应更小');
+    assert.ok(h.safetyThreatK > n.safetyThreatK, '困难档更重视安全牌');
+    assert.strictEqual(h.threatVeto, true);
+    assert.strictEqual(h.lookahead, 2);
+    // 成长型 = 困难 + 学习
+    const g = AI.profileOf('growth');
+    assert.strictEqual(g.learn, true);
+    assert.strictEqual(g.threatVeto, true);
+    assert.ok(g.safetyThreatK >= h.safetyThreatK);
+  });
+
+  await testAsync('Game 接受难度参数：非法值回到普通，setDifficulty 可切档', async () => {
+    const g1 = new Game({ speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: 'hard' });
+    assert.strictEqual(g1.aiDifficulty, 'hard');
+    assert.strictEqual(g1.viewFor(1).diff, 'hard', 'AI 视角里要带上难度档');
+    const g2 = new Game({ speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: '乱填' });
+    assert.strictEqual(g2.aiDifficulty, 'normal');
+    assert.strictEqual(g1.setDifficulty('growth'), 'growth');
+    assert.strictEqual(g1.viewFor(2).diff, 'growth');
+    assert.strictEqual(g1.setDifficulty('xxx'), 'normal');
+  });
+
+  test('困难档：对手明显已听时不亮倒（威胁否决），普通档没有这一条', () => {
+    const AI = require('../js/ai.js');
+    const hand = H('123456789t 12b 11b 5t');   // 14 张，能算出亮倒方案
+    const mkView = (diff) => ({
+      seat: 0, hand: hand.slice(), melds: [],
+      discards: [[], [], []], meldsByPlayer: [[], [], []],
+      wallCount: 0,                        // 牌墙见底 → 威胁 = 1.4
+      rules: R.DEFAULT_RULES,
+      diff: diff,
+      liangdaoLearn: AI.newLearnTable(),
+      rng: () => 0.5
+    });
+    const n = AI.liangdaoDecision(mkView('normal'));
+    const h = AI.liangdaoDecision(mkView('hard'));
+    assert.ok(n && h, '两边都该算出亮倒方案');
+    assert.strictEqual(n.vetoed, false, '普通档不做威胁否决');
+    assert.strictEqual(h.vetoed, true, '困难档在牌墙见底时应否决亮倒');
+    assert.ok(h.need > n.need, '否决时门槛应显著抬高（' + h.need + ' vs ' + n.need + '）');
+  });
+
+  await testAsync('困难档的舍牌更稳定（噪声小）：同一手牌多次决策更一致', async () => {
+    const AI = require('../js/ai.js');
+    // 手牌里有几张价值接近的牌，噪声大小会影响结果
+    const hand = H('11t 24t 78t 369b 1z 4z 7z 2t 5t 8t');
+    const pick = (diff, rnd) => {
+      const out = {};
+      for (let i = 0; i < 30; i++) {
+        const t = AI.chooseDiscard({
+          seat: 0, hand: hand.slice(), melds: [], discards: [[], [], []],
+          meldsByPlayer: [[], [], []], wallCount: 30, rules: R.DEFAULT_RULES,
+          diff: diff, rng: () => rnd
+        });
+        out[t] = (out[t] || 0) + 1;
+      }
+      return out;
+    };
+    // 用固定序列的伪随机数，比较两档在同一随机流下「最优解占多大比例」
+    let seed = 12345;
+    const seq = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const normal = pick('normal', seq);
+    seed = 12345;
+    const hard = pick('hard', seq);
+    const top = (o) => Math.max.apply(null, Object.keys(o).map(k => o[k]));
+    assert.ok(top(hard) >= top(normal),
+      '困难档的噪声小，最优解占比不该比普通档低：hard=' + top(hard) + ' normal=' + top(normal));
+  });
+
+  /* ------------------------------------------------------------------ */
   group('对局记录 / 统计');
 
   await (async () => {

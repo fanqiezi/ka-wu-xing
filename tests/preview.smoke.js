@@ -225,7 +225,7 @@ async function check(name, file) {
     const bar = $('#infoBar');
     assert(tile && bar, '手牌/信息条节点应存在');
     tile.dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
-    await sleep(480);
+    await sleep(800);            // 长按阈值 380ms；机器忙时定时器会晚触发，留足余量
     assert(bar.classList.contains('show'), '长按后应出现信息条');
     assert(/听/.test(bar.textContent), '信息条应说明听什么，实际：' + bar.textContent);
   });
