@@ -66,6 +66,8 @@
     if (options.humanSeatIsAI) { /* 保留给无头测试 */ }
     // 电脑难度：normal（普通）/ hard（困难）/ growth（成长型，会学人类）
     this.aiDifficulty = AI.profileOf(options.aiDifficulty || 'normal').key;
+    // 可选：按座位单独指定难度（A/B 自对弈统计用；默认跟随全局难度）
+    this.aiDifficultyBySeat = options.aiDifficultyBySeat || null;
     // 电脑的「亮倒奖惩记忆」：每个座位一套，按牌型记「亮倒后赢了/输了」的倾向
     this.liangdaoLearn = [0, 1, 2].map(function () { return AI.newLearnTable(); });
     this.playing = false;
@@ -189,7 +191,8 @@
       remain: AI.buildRemain({ hand: p.hand, discards: discards, meldsByPlayer: meldsByPlayer }),
       wallCount: this.wall ? this.wall.length : 0,
       rules: this.rules,
-      diff: this.aiDifficulty,                   // 难度档：normal / hard / growth
+      diff: (this.aiDifficultyBySeat && this.aiDifficultyBySeat[seat]) || this.aiDifficulty,
+      gangChain: this.gangChain,                 // 杠链（杠分收益要用）
       liangdaoLearn: this.liangdaoLearn[seat],   // 该座位的亮倒奖惩记忆
       human: seat === 0,
       rng: this.rng

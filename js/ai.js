@@ -45,12 +45,30 @@
     threatNeedMul: 1.6,     // 否决时把门槛抬高的倍数
     lookahead: 1,           // 前瞻层数（P2 起 hard 用 2）
     fanBias: 0,             // 番型倾向（0 = 只看牌效；>0 才开始为番型留牌）
+    // ---- 困难档才用的评分项（普通档全部为 0 / false，行为与旧版一致）----
+    dangerW: 0,             // 切出去这张牌的危险度权重
+    leftRiskW: 0,           // 「剩下的牌之后好不好打」的权重（第 2 层）
+    waitQualityW: 0,        // 听牌质量（几面听）权重
+    retreat: false,         // 尾盘允许退向听防守
+    retreatThreat: 1.45,    // 触发退向听的对手威胁阈值
+    retreatWall: 14,        // 触发退向听的剩余牌山
+    retreatShantenW: 220,   // 退向听模式下「1 向听」的代价（正常 1000）
+    dangerHigh: 0.72,       // 「这张太危险了」阈值（退向听触发）
+    dangerLow: 0.28,        // 「这张够安全」阈值（退向听候选）
+    kongTradeoff: false,    // 杠之前算「破坏损失 vs 杠分收益」
+    kongPayForShanten: 3,   // 1 个向听值几个底金的杠分
+    kongWaitTol: 0.35,      // 同向听时，听口最多缩水多少
+    mixBand: 0,             // 亮倒临界混合带（±比例），0 = 不用混合策略
+    mixProb: 0.35,          // 带内选择不亮的概率
     learn: false            // 是否启用「学人类」的记忆（P3）
   };
 
   var DIFFICULTY = {
     normal: NORMAL_PROFILE,
-    // 困难：少一点随机、防守更狠、亮倒更挑剔（对手已听时直接否决）
+    // 困难：少一点随机、会挑好形听牌、轻量避铳；对手明显已听时略抬亮倒门槛。
+    // 参数是拿「座位0 对两家普通档」的 300 局自对弈标定的：平均分 +56 vs 普通档 +20。
+    // 教训：**大面积防守会掉分**（三人局里别人互放铳的收益被你让掉了），
+    //       真正涨分的是「听牌质量」（多面听 / 别留死听）＋ 只在危险时才避铳。
     hard: Object.assign({}, NORMAL_PROFILE, {
       key: 'hard', label: '困难',
       jitter: 2,
@@ -58,9 +76,19 @@
       safetySeen2: 8,
       safetySeen1: 3,
       pongScoreMul: 1.0,
-      liangdaoNeedMul: 0.9,
+      liangdaoNeedMul: 1.0,
       threatVeto: true,
-      lookahead: 2
+      threatNeedMul: 1.15,        // 轻度否决：只在对手明显已听时略抬门槛
+      lookahead: 2,
+      dangerW: 40,                // 轻量避铳（大了会明显掉分）
+      leftRiskW: 20,
+      waitQualityW: 90,           // 主要涨分项：优先留好形听牌
+      retreat: true,              // 退向听只在极端局面（见下面阈值）
+      retreatWall: 6,
+      dangerHigh: 0.85,
+      dangerLow: 0.25,
+      kongTradeoff: true,
+      mixBand: 0.10
     }),
     // 成长型：困难 + 记忆（记忆内容在 P3 落地，这里先把开关和档位准备好）
     growth: Object.assign({}, NORMAL_PROFILE, {
@@ -70,9 +98,19 @@
       safetySeen2: 8,
       safetySeen1: 3,
       pongScoreMul: 1.0,
-      liangdaoNeedMul: 0.9,
+      liangdaoNeedMul: 1.0,
       threatVeto: true,
+      threatNeedMul: 1.15,
       lookahead: 2,
+      dangerW: 50,
+      leftRiskW: 25,
+      waitQualityW: 100,
+      retreat: true,
+      retreatWall: 6,
+      dangerHigh: 0.85,
+      dangerLow: 0.25,
+      kongTradeoff: true,
+      mixBand: 0.12,
       learn: true
     })
   };
@@ -146,24 +184,100 @@
 
   /**
    * 评估「打掉某张牌之后」的手牌质量
-   * @returns {shanten, ukeire, waitCount}
+   * @returns {shanten, ukeire, waitCount, waits, shape}
+   *   shape：听牌质量 0~1（几面听；单吊/嵌张偏低）
    */
   function evaluateHand(hand13, melds, remain, rules) {
     var s = R.shanten(hand13, melds);
     var score = 0;
     var waitCount = 0;
+    var waits = null;
+    var shape = 0;
     if (s === 0) {
-      var waits = R.waitingTiles(hand13, melds);
+      waits = R.waitingTiles(hand13, melds);
       for (var i = 0; i < waits.length; i++) {
         // 屁胡不能捉炮，只能自摸，但自摸概率与剩余张数一致
         waitCount += remain[waits[i]];
       }
       score = waitCount * 14;
+      // 听几面：3 面以上 1.0、两面 0.6、单吊/嵌张 0.25
+      shape = waits.length >= 3 ? 1 : (waits.length === 2 ? 0.6 : 0.25);
     } else if (s > 0) {
       var useful = R.usefulTiles(hand13, melds, remain);
       score = sumValues(useful) * 9;
     }
-    return { shanten: s, score: score, waitCount: waitCount };
+    return { shanten: s, score: score, waitCount: waitCount, waits: waits, shape: shape };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 逐张危险度（公开信息推断，0 = 极安全、1 = 极危险）
+   *
+   * 只用「所有人都能看到的东西」：牌河、副露、牌墙剩余。
+   * 判断依据（按可靠性排序）：
+   *   1) 现物：这张牌在任一对手的牌河里出现过 → 没人会点炮给它
+   *   2) 绝张：四张全可见 → 不可能被等
+   *   3) 中张 vs 端张：3~7 比 1/9 更容易被两面/嵌张利用
+   *   4) 对手花色倾向：某个对手几乎不打某花色 → 他大概率在等这门
+   *   5) 副露越多 / 牌墙越少 → 对手越可能已经听牌，整体放大
+   * ------------------------------------------------------------------ */
+  function dangerOf(view, tile) {
+    var remain = view.remain || buildRemain(view);
+    var discards = view.discards || [[], [], []];
+    var meldsByPlayer = view.meldsByPlayer || [[], [], []];
+    var seat = view.seat === undefined ? -1 : view.seat;
+    var seen = 4 - remain[tile];
+    if (seen >= 4) return 0.02;                       // 绝张：不可能被等
+
+    var oppDisc = [];
+    var oppMelds = 0;
+    for (var i = 0; i < 3; i++) {
+      if (i === seat) continue;
+      oppDisc = oppDisc.concat(discards[i] || []);
+      oppMelds += (meldsByPlayer[i] || []).length;
+    }
+    // 现物
+    for (var k = 0; k < oppDisc.length; k++) if (oppDisc[k] === tile) return 0.03;
+
+    var d;
+    if (T.isHonor(tile)) {
+      // 字牌：见 2 张以上基本安全，1 张中等，0 张偏危险（别人可能在等对子/刻子）
+      d = seen >= 2 ? 0.06 : (seen === 1 ? 0.26 : 0.42);
+    } else {
+      var rank = T.rankOf(tile);
+      d = 0.42;
+      if (rank >= 3 && rank <= 7) d += 0.16;          // 中张更容易被利用
+      else if (rank === 1 || rank === 9) d -= 0.10;   // 端张安全一点
+      if (seen >= 2) d -= 0.10;
+      // 花色倾向：对手在这门打得越少，越可能在等这门
+      var suit = T.suitOf(tile);
+      var sameDisc = 0, otherDisc = 0;
+      for (var q = 0; q < oppDisc.length; q++) {
+        var od = oppDisc[q];
+        if (T.isHonor(od)) continue;
+        if (T.suitOf(od) === suit) sameDisc++; else otherDisc++;
+      }
+      if (otherDisc >= 4 && sameDisc === 0) d += 0.12;      // 对手明显不要别的门
+      else if (sameDisc >= 6) d -= 0.12;                    // 对手一直在打这门
+    }
+    // 对手副露多 / 牌墙见底 → 更可能已经听牌，整体放大
+    var wall = view.wallCount === undefined ? 30 : view.wallCount;
+    var progress = Math.max(0, Math.min(1, 1 - wall / 40));
+    d *= (1 + 0.18 * oppMelds) * (1 + 0.35 * progress);
+    return Math.max(0, Math.min(1, d));
+  }
+
+  /** 手上剩下这些牌（之后还要打出去的）平均有多危险 —— 「这一张安全，但后面难打」的代价 */
+  function leftoverDanger(view, tiles) {
+    if (!tiles.length) return 0;
+    var seen = {}, sum = 0, n = 0;
+    for (var i = 0; i < tiles.length; i++) {
+      var t = tiles[i];
+      if (seen[t]) continue;
+      seen[t] = 1;
+      sum += dangerOf(view, t);
+      n++;
+    }
+    return n ? sum / n : 0;
   }
 
   /** 出牌决策；hand 为摸牌后的 14 张（或 3n+2 张）
@@ -180,10 +294,17 @@
       if (legal.length) options = legal;
     }
     var best = null;
+    var scored = [];
     // 对手威胁：越到尾盘、对手副露越多，越可能已经听牌 → 出牌要更保守（降低放铳率）
     var threat = opponentThreat(view);
     var safetyW = 1 + p.safetyThreatK * Math.max(0, threat - 0.6);
     var jitter = view.jitter === undefined ? p.jitter : view.jitter;
+    // 退向听防守：尾盘 + 对手威胁大时，宁可多一向听也要打安全牌
+    var shantenW = 1000;
+    var wall = view.wallCount === undefined ? 30 : view.wallCount;
+    if (p.retreat && threat >= p.retreatThreat && wall <= p.retreatWall) {
+      shantenW = p.retreatShantenW;
+    }
 
     for (var i = 0; i < options.length; i++) {
       var t = options[i];
@@ -195,11 +316,31 @@
       var seen = 4 - remain[t];
       var safety = seen >= 2 ? p.safetySeen2 : (seen === 1 ? p.safetySeen1 : 0);
 
-      var total = -ev.shanten * 1000 + ev.score - keepValue * p.keepValueW + safety * safetyW;
+      var total = -ev.shanten * shantenW + ev.score - keepValue * p.keepValueW + safety * safetyW;
+      if (p.dangerW) total -= dangerOf(view, t) * p.dangerW;              // 这张牌有多危险
+      if (p.leftRiskW) total -= leftoverDanger(view, rest) * p.leftRiskW; // 剩下的牌之后好不好打（第 2 层）
+      if (p.waitQualityW && ev.shape) total += ev.shape * p.waitQualityW; // 听牌质量（几面听）
       if (jitter) total += ((view.rng ? view.rng() : Math.random()) - 0.5) * jitter;
 
       if (!best || total > best.total) {
         best = { tile: t, total: total, ev: ev };
+      }
+      scored.push({ tile: t, total: total, ev: ev, danger: p.dangerW || p.retreat ? dangerOf(view, t) : 0 });
+    }
+
+    // 退向听防守（困难档）：尾盘 + 对手威胁大时，宁可多一向听也别打危险牌
+    if (best && p.retreat && shantenW < 1000) {
+      var bestDanger = dangerOf(view, best.tile);
+      if (bestDanger >= p.dangerHigh) {
+        var alt = null;
+        for (var k = 0; k < scored.length; k++) {
+          var c = scored[k];
+          if (c.ev.shanten > best.ev.shanten + 1) continue;      // 最多退一个向听
+          if (c.danger > p.dangerLow) continue;                  // 必须够安全
+          if (!alt || c.danger < alt.danger ||
+            (c.danger === alt.danger && c.total > alt.total)) alt = c;
+        }
+        if (alt) best = alt;
       }
     }
     return best ? best.tile : hand[0];
@@ -216,6 +357,45 @@
       }
     }
     return best;
+  }
+
+  /** 这次杠能立刻收多少钱（单位：底金） */
+  function kongPayoff(view, kind) {
+    var base = (view.rules && view.rules.baseScore) || 1;
+    var per = kind === 'ankong' ? 2 : (kind === 'zhigang' ? 2 : 1);
+    var payers = kind === 'zhigang' ? 1 : 2;
+    var chain = Math.pow(2, Math.min(Math.max(view.gangChain || 0, 0), 4));
+    return base * per * payers * chain;
+  }
+
+  /**
+   * 杠的统一决策：杠完向听不变就直接杠；
+   * 困难档再权衡「杠分收益 vs 破坏手牌的代价」——
+   *   · 已经听牌（0 向听）不为了杠分破坏听牌
+   *   · 还没听且杠分 ≥ kongPayForShanten × 变差的向听数，才用杠分换进度
+   *   · 同向听但听口缩水超过 kongWaitTol 也不杠
+   */
+  function kongDecision(view, kind, cur, sAfter, waitBefore, waitAfter) {
+    var p = profileOf(view.diff);
+    if (sAfter < cur) return true;
+    if (sAfter === cur) {
+      if (!p.kongTradeoff) return true;
+      if (waitBefore > 0 && waitAfter < waitBefore * (1 - p.kongWaitTol)) return false;
+      return true;
+    }
+    // 杠完向听变差
+    if (!p.kongTradeoff) return false;
+    if (cur <= 0) return false;                       // 已经听牌，不换
+    var payoff = kongPayoff(view, kind);
+    return payoff >= p.kongPayForShanten * (sAfter - cur);
+  }
+
+  function waitCountOf(hand, melds, remain) {
+    if (!remain) return 0;
+    var waits = R.waitingTiles(hand, melds);
+    var n = 0;
+    for (var i = 0; i < waits.length; i++) n += remain[waits[i]];
+    return n;
   }
 
   /**
@@ -243,36 +423,43 @@
   function shouldZhiGang(view, tile) {
     var hand = view.hand;
     var melds = view.melds || [];
+    var remain = view.remain || buildRemain(view);
     var cur = R.shanten(hand, melds);
     var after = without(hand, tile, 3);
     var newMelds = melds.concat([{ kind: 'zhigang', tile: tile }]);
     var sAfter = R.shanten(after, newMelds);
-    return sAfter <= cur;
+    var wb = cur === 0 ? waitCountOf(hand, melds, remain) : 0;
+    var wa = sAfter === 0 ? waitCountOf(after, newMelds, remain) : 0;
+    return kongDecision(view, 'zhigang', cur, sAfter, wb, wa);
   }
 
   /** 是否暗杠 */
   function shouldAnKong(view, tile) {
     var hand = view.hand;
     var melds = view.melds || [];
+    var remain = view.remain || buildRemain(view);
     var cur = R.shanten(hand, melds);
     var after = without(hand, tile, 4);
     var newMelds = melds.concat([{ kind: 'ankong', tile: tile }]);
     var sAfter = R.shanten(after, newMelds);
-    // 杠分很香（暗杠两家各 2 倍底金），只要不让牌变差就杠
-    return sAfter <= cur;
+    var wb = cur === 0 ? waitCountOf(hand, melds, remain) : 0;
+    var wa = sAfter === 0 ? waitCountOf(after, newMelds, remain) : 0;
+    return kongDecision(view, 'ankong', cur, sAfter, wb, wa);
   }
 
   /** 是否补杠（已碰，手上又有第四张） */
   function shouldAddKong(view, tile) {
     var hand = view.hand;
+    var remain = view.remain || buildRemain(view);
     var melds = view.melds.map(function (m) {
       return m.kind === 'pong' && m.tile === tile ? { kind: 'mingkong', tile: tile } : m;
     });
     var cur = R.shanten(hand, view.melds || []);
     var after = without(hand, tile, 1);
     var sAfter = R.shanten(after, melds);
-    // 补杠有被抢杠的风险，牌型会变差就不杠
-    return sAfter <= cur;
+    var wb = cur === 0 ? waitCountOf(hand, view.melds || [], remain) : 0;
+    var wa = sAfter === 0 ? waitCountOf(after, melds, remain) : 0;
+    return kongDecision(view, 'addkong', cur, sAfter, wb, wa);
   }
 
   /* ------------------------------------------------------------------ *
@@ -548,9 +735,20 @@
     var threat = opponentThreat(view);
     var vetoed = !!(p.threatVeto && threat >= p.threatAt);
     if (vetoed) need *= p.threatNeedMul;
+    // 困难档：EV 落在临界带里用混合策略（避免阈值被对手反推），带外用确定判断
+    var yes = plan.score > need;
+    var mixed = false;
+    if (p.mixBand > 0) {
+      var lo = need * (1 - p.mixBand), hi = need * (1 + p.mixBand);
+      if (plan.score > lo && plan.score <= hi) {
+        mixed = true;
+        var r = view.rng ? view.rng() : Math.random();
+        yes = r >= p.mixProb;          // 带内有 mixProb 的概率选择不亮
+      }
+    }
     return {
       plan: plan, need: need, adj: adj, sitKey: sitKey, score: plan.score,
-      threat: threat, vetoed: vetoed, yes: plan.score > need
+      threat: threat, vetoed: vetoed, mixed: mixed, yes: yes
     };
   }
 
@@ -591,6 +789,9 @@
     typeKeyOfInfo: typeKeyOfInfo,
     bestTypeInfo: bestTypeInfo,
     opponentThreat: opponentThreat,
+    dangerOf: dangerOf,
+    leftoverDanger: leftoverDanger,
+    kongPayoff: kongPayoff,
     LIANGDAO: LIANGDAO,
     // 难度档
     DIFFICULTY: DIFFICULTY,

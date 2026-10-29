@@ -1415,6 +1415,82 @@ function playOne(seed, stats) {
       '困难档的噪声小，最优解占比不该比普通档低：hard=' + top(hard) + ' normal=' + top(normal));
   });
 
+  await testAsync('困难档：轻量避铳让舍牌更安全（同手牌普通打危险张、困难打现物）', async () => {
+    const AI = require('../js/ai.js');
+    // 123t 456t 789t + 34条 + 5条 + 白白；对手牌河里 1筒/2筒/3筒…(1筒是现物)
+    const hand = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 20, 20];
+    const discards = [[9, 10, 15, 16, 3, 4], [11, 12, 14, 0, 1, 2], []];
+    const meldsByPlayer = [[], [], []];
+    const mkView = (diff) => ({
+      seat: 0, hand: hand.slice(), melds: [], discards: discards, meldsByPlayer: meldsByPlayer,
+      remain: AI.buildRemain({ hand: hand, discards: discards, meldsByPlayer: meldsByPlayer }),
+      wallCount: 20, rules: R.DEFAULT_RULES, diff: diff, gangChain: 0,
+      liangdaoLearn: AI.newLearnTable(), rng: () => 0.5
+    });
+    const vn = mkView('normal'), vh = mkView('hard');
+    const n = AI.chooseDiscard(vn);
+    const h = AI.chooseDiscard(vh);
+    const dn = AI.dangerOf(vn, n), dh = AI.dangerOf(vh, h);
+    assert.ok(dh < dn, '困难档该打更安全的牌：普通 ' + dn.toFixed(2) + ' vs 困难 ' + dh.toFixed(2));
+    assert.ok(dh <= 0.1, '困难档打的应该是现物，实际危险度 ' + dh.toFixed(2));
+    assert.ok(dn > 0.25, '普通档这一手会打危险张（对照组才有意义），实际 ' + dn.toFixed(2));
+  });
+
+  test('危险度：现物/绝张很安全，生张中张偏危险，取值夹在 0~1', () => {
+    const AI = require('../js/ai.js');
+    const mk = (hand, discards, wall) => {
+      const meldsByPlayer = [[], [], []];
+      return {
+        seat: 0, hand: hand, melds: [], discards: discards, meldsByPlayer: meldsByPlayer,
+        remain: AI.buildRemain({ hand: hand, discards: discards, meldsByPlayer: meldsByPlayer }),
+        wallCount: wall, rules: R.DEFAULT_RULES, liangdaoLearn: AI.newLearnTable()
+      };
+    };
+    const hand = H('123456789t 123b 11b');
+    // 注意：discards[0] 是自己的牌河，不算对手 → 现物要放在 1/2 号位
+    const v = mk(hand, [[], [11, 12], [13]], 30);
+    assert.ok(AI.dangerOf(v, 11) <= 0.05, '现物应该几乎安全，实际 ' + AI.dangerOf(v, 11).toFixed(2));
+    // 生张中张（5筒）比生张端张（1筒）危险
+    const mid = AI.dangerOf(v, 4);
+    const edge = AI.dangerOf(v, 0);
+    assert.ok(mid > edge, '中张应比端张危险：' + mid.toFixed(2) + ' vs ' + edge.toFixed(2));
+    // 绝张：四张全可见（自己手里 3 张 + 对手牌河 1 张）
+    const hand4 = H('999b 123456789t 11b');
+    const v2 = mk(hand4, [[], [17], []], 30);
+    assert.ok(AI.dangerOf(v2, 17) <= 0.05, '绝张应该几乎安全，实际 ' + AI.dangerOf(v2, 17).toFixed(2));
+    [mid, edge, AI.dangerOf(v, 20), AI.dangerOf(v2, 3)].forEach(d =>
+      assert.ok(d >= 0 && d <= 1, '危险度必须落在 0~1，实际 ' + d));
+  });
+
+  test('杠的账：暗杠 4 底金、直杠 2、补杠 2，杠链翻倍', () => {
+    const AI = require('../js/ai.js');
+    const view = { rules: { baseScore: 1 }, gangChain: 0 };
+    assert.strictEqual(AI.kongPayoff(view, 'ankong'), 4, '暗杠：2 倍 × 2 家');
+    assert.strictEqual(AI.kongPayoff(view, 'zhigang'), 2, '直杠：2 倍 × 1 家');
+    assert.strictEqual(AI.kongPayoff(view, 'addkong'), 2, '补杠：1 倍 × 2 家');
+    view.gangChain = 2;
+    assert.strictEqual(AI.kongPayoff(view, 'ankong'), 16, '第 3 杠（链 ×4）：4 × 4');
+    view.gangChain = 9;
+    assert.strictEqual(AI.kongPayoff(view, 'ankong'), 64, '链倍率封顶 ×16');
+    // 底金 2 时翻倍
+    assert.strictEqual(AI.kongPayoff({ rules: { baseScore: 2 }, gangChain: 0 }, 'ankong'), 8);
+  });
+
+  await testAsync('亮倒的临界混合策略：困难档会给出 mixed 标记，普通档不做混合', async () => {
+    const AI = require('../js/ai.js');
+    const hand = H('123456789t 12b 11b 5t');
+    const mkView = (diff) => ({
+      seat: 0, hand: hand.slice(), melds: [], discards: [[], [], []], meldsByPlayer: [[], [], []],
+      wallCount: 30, rules: R.DEFAULT_RULES, diff: diff,
+      liangdaoLearn: AI.newLearnTable(), rng: () => 0.01
+    });
+    const n = AI.liangdaoDecision(mkView('normal'));
+    const h = AI.liangdaoDecision(mkView('hard'));
+    assert.strictEqual(n.mixed, false, '普通档不用混合策略');
+    assert.strictEqual(typeof h.mixed, 'boolean', '困难档应带 mixed 标记');
+    assert.strictEqual(AI.profileOf('hard').mixBand > 0, true, '困难档应启用混合带');
+  });
+
   /* ------------------------------------------------------------------ */
   group('对局记录 / 统计');
 
