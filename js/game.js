@@ -642,16 +642,18 @@
     if (forced && banned.indexOf(tile) >= 0) {
       this.pushLog(p.name + ' 手里全是亮倒者的听张，只能被迫打出 ' + T.nameOf(tile), 'hl');
     }
+    // 切牌方式：打出的正好是刚摸到的那张 = 摸切；从手牌里挑一张 = 手切
+    var tsumogiri = p.lastDraw !== null && tile === p.lastDraw;
     p.hand = without(p.hand, tile, 1);
     p.lastDraw = null;
     p.liangdaoFresh = false;
     // 亮倒玩家的「公开手牌」= 能推出听牌的那段关联牌；其余不亮
     if (p.liangdao) p.liangdaoReveal = R.revealTiles(p.hand, p.melds);
     p.discards.push(tile);
-    this.lastDiscard = { tile: tile, seat: seat };
-    this.rec({ t: 'discard', seat: seat, tile: tile });
-    this.emit('discard', { seat: seat, tile: tile });
-    this.pushLog(p.name + ' 打出 ' + T.nameOf(tile));
+    this.lastDiscard = { tile: tile, seat: seat, tsumogiri: tsumogiri };
+    this.rec({ t: 'discard', seat: seat, tile: tile, tsumogiri: tsumogiri });
+    this.emit('discard', { seat: seat, tile: tile, tsumogiri: tsumogiri });
+    this.pushLog(p.name + (tsumogiri ? ' 摸切 ' : ' 手切 ') + T.nameOf(tile));
     return tile;
   };
 

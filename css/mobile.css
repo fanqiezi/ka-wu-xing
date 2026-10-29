@@ -396,6 +396,7 @@ body.layout-mobile .rp-name { font-size: 13px; }
 body.layout-mobile .rp-row { gap: 2px; }
 body.layout-mobile .rp-row .row-label { min-width: 26px; font-size: 9.5px; padding-top: 9px; }
 body.layout-mobile .rp-tile { width: 22px !important; height: 31px !important; }
+body.layout-mobile .rp-cut { margin-left: 5px; padding: 2px 6px; font-size: 10px; }
 body.layout-mobile .replay-bar { gap: 5px; }
 body.layout-mobile .replay-bar .btn { padding: 8px 11px; font-size: 13px; min-height: 38px; }
 body.layout-mobile .replay-turn { max-width: 52vw; font-size: 12px; padding: 8px; }

@@ -449,6 +449,13 @@ button { font-family: inherit; }
   flex: 0 0 auto; min-width: 44px; font-size: 12px; color: var(--text-dim); padding-top: 12px;
 }
 .rp-tile { width: 36px !important; height: 50px !important; border-radius: 5px !important; }
+/* 摸切 / 手切 标签 */
+.rp-cut {
+  align-self: center; margin-left: 8px; padding: 3px 9px; border-radius: 7px;
+  font-size: 12px; font-weight: 700; letter-spacing: 1px;
+}
+.rp-cut.tsumo { background: rgba(140, 190, 255, .22); color: #cfe4ff; }
+.rp-cut.te { background: rgba(232, 197, 106, .3); color: #ffe6a8; }
 .replay-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 6px; }
 .replay-bar .btn { padding: 9px 18px; font-size: 15px; border-radius: 10px; }
 .replay-turn {

@@ -1042,6 +1042,41 @@ function playOne(seed, stats) {
       assert.strictEqual(acts.indexOf('addkong'), -1, '不是摸到第 4 张的那一巡，不该再给补杠');
     });
 
+    await testAsync('切牌：摸到就切 = 摸切；换成手牌里的另一张 = 手切', async () => {
+      async function play(discardDrawn) {
+        const g = new Game({ speed: 0, rules: R.DEFAULT_RULES });
+        g.playing = true;
+        g.wall = [1, 2, 3, 4, 5];
+        const p = g.players[0];
+        p.isAI = false;
+        p.hand = H('123456789t 123b 11b');            // 13 张
+        const drawn = H('3b')[0];
+        p.lastDraw = drawn;
+        p.hand.push(drawn);
+        p.hand = p.hand.sort((a, b) => a - b);        // 14 张
+        g.on('ask', a => {
+          if (a.kind !== 'discard') return;
+          const tile = discardDrawn ? drawn : H('1t')[0];
+          g.submit({ type: 'discard', tile: tile });
+        });
+        const used = await g.discardPhase(0);
+        return { g, p, drawn, used };
+      }
+
+      const a = await play(true);
+      assert.strictEqual(a.used, a.drawn, '摸切就是把刚摸的那张切出去');
+      assert.strictEqual(a.g.lastDiscard.tsumogiri, true, '应标记为摸切');
+      assert.ok(a.g.log.some(l => l.text.indexOf('摸切') >= 0),
+        '操作历史应写摸切：' + a.g.log.map(l => l.text).join(' | '));
+      assert.ok(!a.g.log.some(l => l.text.indexOf('手切') >= 0), '不该出现手切');
+
+      const b = await play(false);
+      assert.strictEqual(b.g.lastDiscard.tsumogiri, false, '应标记为手切');
+      assert.ok(b.g.log.some(l => l.text.indexOf('手切') >= 0),
+        '操作历史应写手切：' + b.g.log.map(l => l.text).join(' | '));
+      assert.ok(b.g.log.some(l => l.text.indexOf('切牌') >= 0 || l.text.indexOf('手切') >= 0));
+    });
+
     await testAsync('杠上炮：屁胡也能胡，番数加算 +2，只有杠链才乘算', async () => {
       const pit = H('123456789t 12b 11b');       // 听 3条，屁胡
       const tile = 9 + 3 - 1;

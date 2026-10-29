@@ -446,13 +446,13 @@
     if (!bar) { confirmMobilePick(tile); return; }
     bar.innerHTML = '';
     var txt = document.createElement('span');
-    txt.textContent = '已选 ' + T.nameOf(tile) + '（' + (node && node.title ? node.title : '再点一次打出') + '）';
+    txt.textContent = '已选 ' + T.nameOf(tile) + '（' + (node && node.title ? node.title : '再点一次切牌') + '）';
     bar.appendChild(txt);
     var sp = document.createElement('span');
     sp.className = 'sp';
     bar.appendChild(sp);
     var go = document.createElement('button');
-    go.textContent = '打出';
+    go.textContent = '切牌';
     go.dataset.confirm = 'go';
     var no = document.createElement('button');
     no.className = 'ghost';
@@ -772,14 +772,14 @@
           badge: info ? info.total : null,
           badgeWarn: info ? info.isPitHu : false,
           title: info
-            ? '打 ' + T.nameOf(t) + ' → 听 ' + describeWaits(info) +
+            ? '切 ' + T.nameOf(t) + ' → 听 ' + describeWaits(info) +
               (info.isPitHu ? '（屁胡，只能自摸）' : '（' + info.fan + ' 倍牌型，可捉炮）')
             : null,
           onClick: (canPick && !dis) ? function () { pickTile(t, this); } : null
         };
         if (danger) {
           opts.cls = (opts.cls ? opts.cls + ' ' : '') + 'dangerous';
-          opts.title = '这是亮倒者的听张，打出去就是放铳' + (opts.title ? '\n' + opts.title : '');
+          opts.title = '这是亮倒者的听张，切出去就是放铳' + (opts.title ? '\n' + opts.title : '');
         }
         handRow.appendChild(makeTile(t, size, opts));
       } else {
@@ -799,7 +799,7 @@
         title: isWinTile
           ? '本局赢张：' + T.nameOf(drawn)
           : (info2
-            ? '打 ' + T.nameOf(drawn) + ' → 听 ' + describeWaits(info2) +
+            ? '切 ' + T.nameOf(drawn) + ' → 听 ' + describeWaits(info2) +
               (info2.isPitHu ? '（屁胡，只能自摸）' : '（' + info2.fan + ' 倍牌型，可捉炮）')
             : null),
         onClick: (canPick && !dis2) ? function () { pickTile(drawn, this); } : null
@@ -842,9 +842,9 @@
       var showBest = acting && selfHints.best;
       container.appendChild(scrollBox);
       container.appendChild(makeWaitRow(showBest ? selfHints.best : selfHints.current, {
-        label: showBest ? ('打 ' + T.shortOf(selfHints.bestTile) + ' 后听') : '听牌',
+        label: showBest ? ('切 ' + T.shortOf(selfHints.bestTile) + ' 后听') : '听牌',
         emptyText: acting
-          ? '未听牌（手牌角标数字＝打这张后共剩几张和牌张）'
+          ? '未听牌（手牌角标数字＝切这张后共剩几张和牌张）'
           : '未听牌',
         locked: selfHints.locked
       }));
@@ -915,7 +915,9 @@
       note.style.fontSize = '11px';
       note.style.color = '#a8c2b6';
       note.style.marginLeft = '8px';
-      note.textContent = state.players[state.lastDiscard.seat].name + ' 打出 ' + T.nameOf(state.lastDiscard.tile);
+      // 出牌提示：让所有人看出这是摸切还是手切（能据此推断对手手牌）
+      note.textContent = state.players[state.lastDiscard.seat].name +
+        (state.lastDiscard.tsumogiri ? ' 摸切 ' : ' 手切 ') + T.nameOf(state.lastDiscard.tile);
       el.centerTiles.appendChild(note);
     }
 
@@ -946,7 +948,7 @@
       if (!isMobileLayout()) {
         var hint = document.createElement('div');
         hint.style.cssText = 'font-size:13px;color:#a8c2b6;padding:8px 6px;';
-        hint.textContent = '点击手牌打出';
+        hint.textContent = '点手牌切牌';
         el.actionbar.appendChild(hint);
       }
       return;
@@ -958,7 +960,7 @@
         var h = playerWaitHints();
         ldHint = '亮倒：番数 ×2，但手牌公开、且亮倒后点炮要赔双倍。';
         if (h.best) {
-          ldHint += '\n当前打 ' + T.nameOf(h.bestTile) + ' 可听 ' + describeWaits(h.best) +
+          ldHint += '\n当前切 ' + T.nameOf(h.bestTile) + ' 可听 ' + describeWaits(h.best) +
             '（' + h.best.fan + ' 倍牌型' + (h.best.isPitHu ? '，屁胡只能自摸' : '，可捉炮') + '）';
         } else if (h.current) {
           ldHint += '\n当前听 ' + describeWaits(h.current) +
@@ -1135,7 +1137,7 @@
     result.winners.forEach(function (w) {
       html += '<div class="win-block">';
       html += '<div class="title">' + w.name +
-        (w.selfDraw ? ' 自摸 ' : ' 胡 ' + state.players[w.fromSeat].name + ' 打出的牌 ') +
+        (w.selfDraw ? ' 自摸 ' : ' 胡 ' + state.players[w.fromSeat].name + ' 切的 ') +
         T.nameOf(w.winTile) +
         (w.qiangGang ? '（抢杠胡）' : '') + (w.gangPao ? '（杠上炮）' : '') +
         '　<b style="color:#ffd97a">+' + w.amount + '</b></div>';
@@ -1380,13 +1382,15 @@
     var frames = [];
     var turns = [];
 
-    function push(text) {
+    function push(text, meta) {
       frames.push({
         hands: hands.map(function (h) { return h.slice(); }),
         melds: melds.map(function (m) { return m.slice(); }),
         discards: discards.map(function (d) { return d.slice(); }),
         liangdao: liangdao.slice(),
         drawn: drawnCount,
+        drew: (meta && meta.drew) || null,     // 这一帧刚摸牌的人/牌（画在手牌右侧）
+        cut: (meta && meta.cut) || null,       // 这一帧的切牌方式（摸切 / 手切）
         text: text
       });
     }
@@ -1400,11 +1404,12 @@
         addTileTo(hands[ev.seat], ev.tile);
         // 一巡 = 三家各摸打一次；跳巡的落点放在「你的回合、摸完牌之后」
         if (ev.seat === 0) turns.push(frames.length);
-        push(n + (ev.fromKong ? ' 杠后补牌 ' : ' 摸 ') + tn);
+        push(n + (ev.fromKong ? ' 杠后补牌 ' : ' 摸 ') + tn, { drew: { seat: ev.seat, tile: ev.tile } });
       } else if (ev.t === 'discard') {
         removeTileFrom(hands[ev.seat], ev.tile);
         discards[ev.seat].push(ev.tile);
-        push(n + ' 打出 ' + tn);
+        push(n + (ev.tsumogiri ? ' 摸切 ' : ' 手切 ') + tn,
+          { cut: { seat: ev.seat, tsumogiri: !!ev.tsumogiri } });
       } else if (ev.t === 'pong') {
         removeTileFrom(hands[ev.seat], ev.tile);
         removeTileFrom(hands[ev.seat], ev.tile);
@@ -1560,8 +1565,16 @@
       html += '<div class="rp-seat' + (seat === 0 ? ' rp-self' : '') + '">';
       html += '<div class="rp-name">' + p.name +
         (f.liangdao[seat] ? '<span class="tag liangdao">亮倒</span>' : '') + '</div>';
+      // 手牌：刚摸到的那张单独摆到右边（和牌桌上一样的看法）
+      var drew = (f.drew && f.drew.seat === seat) ? f.drew.tile : null;
+      var handTiles = f.hands[seat].slice();
+      var drawnIdx = drew !== null ? handTiles.indexOf(drew) : -1;
+      if (drawnIdx >= 0) handTiles.splice(drawnIdx, 1);
       html += '<div class="rp-row"><span class="row-label">手牌</span>' +
-        f.hands[seat].map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
+        handTiles.map(function (t) { return tileFace(t, 'rp-tile'); }).join('') +
+        (drawnIdx >= 0
+          ? '<span class="rp-gap"></span>' + tileFace(drew, 'rp-tile win-tile')
+          : '') + '</div>';
       if (f.melds[seat].length) {
         var mh = '';
         f.melds[seat].forEach(function (m) {
@@ -1571,8 +1584,15 @@
         });
         html += '<div class="rp-row"><span class="row-label">副露</span>' + mh + '</div>';
       }
+      // 牌河：最新一张加金边，并标出摸切 / 手切
       html += '<div class="rp-row"><span class="row-label">牌河</span>' +
-        f.discards[seat].map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
+        f.discards[seat].map(function (t, i) {
+          return tileFace(t, 'rp-tile' + (i === f.discards[seat].length - 1 ? ' newest' : ''));
+        }).join('') +
+        (f.cut && f.cut.seat === seat
+          ? '<span class="rp-cut ' + (f.cut.tsumogiri ? 'tsumo' : 'te') + '">' +
+            (f.cut.tsumogiri ? '摸切' : '手切') + '</span>'
+          : '') + '</div>';
       html += '</div>';
     });
     body.innerHTML = html;
@@ -1793,9 +1813,15 @@
       '因此在牌桌上你会看到：听的是屁胡牌，别人打出来也胡不了，系统会给出提示；' +
       '只有自摸才能成胡。这一条可以在「设置」里关闭，就变成网上常见的那种可以屁胡捉炮的玩法。</p>',
       '<h3>操作</h3><ul>',
-      '<li>轮到你时点击手牌即可打出（刚摸到的牌会单独放在右侧并高亮）。</li>',
+      '<li>轮到你时点手牌切牌（刚摸到的牌单独放在右侧并高亮）。</li>',
       '<li>出现按钮时可选 碰 / 杠 / 胡 / 亮倒 / 过。</li>',
-      '<li>亮倒后手牌对全场公开，番数 ×2，且只能打保持听牌的牌。</li>',
+      '<li>亮倒后手牌对全场公开，番数 ×2，且只能切保持听牌的牌。</li>',
+      '</ul>',
+      '<h3>切牌：摸切 / 手切</h3><ul>',
+      '<li><b>摸切</b>：摸到的那张直接切出，不插进手牌。</li>',
+      '<li><b>手切</b>：从手牌里挑一张切出。</li>',
+      '<li>每次切牌都会在操作历史（以及回放）里标出是摸切还是手切 —— ' +
+      '别人可以据此推断你的手牌。</li>',
       '</ul>'
     ].join('');
     openModal(html, [{ label: '知道了', cls: 'primary', onClick: closeModal }]);

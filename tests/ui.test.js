@@ -975,6 +975,20 @@ function boot(seed) {
       });
     });
 
+    // 摸切 / 手切：回放的每一步都要标出来（摸到的牌也要单独摆到右边）
+    const draws = built.frames.filter(fr => fr.drew);
+    assert.ok(draws.length > 0, '应该有「刚摸牌」的帧');
+    draws.forEach(fr => {
+      assert.ok(typeof fr.drew.seat === 'number' && typeof fr.drew.tile === 'number',
+        '摸牌帧要记下谁摸了什么');
+    });
+    const cuts = built.frames.filter(fr => fr.cut);
+    assert.ok(cuts.length > 0, '应该有切牌帧');
+    cuts.forEach(fr => {
+      assert.ok(/摸切|手切/.test(fr.text), '切牌帧文本要写清摸切/手切，实际：' + fr.text);
+      assert.strictEqual(typeof fr.cut.tsumogiri, 'boolean', '切牌帧要记下摸切/手切');
+    });
+
     // 最后一帧能看到结果（胡牌 / 荒庄的文字）
     const last = built.frames[built.frames.length - 1];
     assert.ok(/自摸|胡 |荒庄/.test(last.text), '最后一帧应写明结果，实际：' + last.text);
@@ -1037,6 +1051,23 @@ function boot(seed) {
     assert.ok(html.indexOf('id="set-haidiFan" checked') < 0, '默认不该勾上');
     dom.findAll(dom.byId['modal-host'], n => dom.hasClass(n, 'btn'))
       .filter(b => b.textContent === '取消')[0].click();
+  });
+
+  await atest('牌桌中央提示「摸切 / 手切」（其他玩家能据此推断手牌）', async () => {
+    const g = win.KWX_UI.getGame();
+    g.stop();
+    const center = dom.byId['center-tiles'];
+    const centerText = () => dom.findAll(center, n => n.tagName === 'DIV')
+      .map(n => n.textContent).join('|');
+
+    g.lastDiscard = { tile: H('3b')[0], seat: 1, tsumogiri: true };
+    g.emit('change', { evt: 'test' });
+    assert.ok(centerText().indexOf('摸切') >= 0, '摸切要写在中央提示里：' + centerText());
+
+    g.lastDiscard = { tile: H('3b')[0], seat: 1, tsumogiri: false };
+    g.emit('change', { evt: 'test' });
+    assert.ok(centerText().indexOf('手切') >= 0, '手切要写在中央提示里：' + centerText());
+    assert.ok(centerText().indexOf('打出') < 0, '不该再出现「打出」的说法：' + centerText());
   });
 
   /* ------------------------------------------------------------------ */
@@ -1161,7 +1192,7 @@ function boot(seed) {
     assert.strictEqual(ui.getMobilePicked(), t, '应记住选中的这张');
     assert.ok(dom.hasClass(dom.byId['confirm-bar'], 'show'), '应出现顶部确认条');
     const barBtns = dom.findAll(dom.byId['confirm-bar'], n => n.tagName === 'BUTTON');
-    assert.ok(barBtns.some(b => b.textContent === '打出'), '确认条应有「打出」按钮');
+    assert.ok(barBtns.some(b => b.textContent === '切牌'), '确认条应有「切牌」按钮');
     assert.ok(barBtns.some(b => b.textContent === '取消'), '确认条应有「取消」按钮');
     assert.ok(g.pending, '第一次点不该真的出牌');
 
