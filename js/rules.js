@@ -532,6 +532,7 @@
     gangScore: true,            // 是否结算杠分
     // 荒局时未听牌赔听牌（查大叫）。亮倒的人也算听牌者，未听牌者一样要赔给他
     huangzhuangPei: true,
+    haidiFan: false,            // 海底捞月算番（+2）：默认关闭
     zimoDouble: false           // 自摸是否额外翻倍（本规则集默认不加番）
   };
 
@@ -578,7 +579,7 @@
    * ctx = {
    *   tiles: 含胡牌张的手牌数组（不含副露），长度应为 3*(4-melds)+2
    *   melds: [{kind:'pong'|'ankong'|'mingkong'|'zhigang', tile}]
-   *   winTile, selfDraw, liangdao, haidi, gangFlower, gangPao, qiangGang, rules
+   *   winTile, selfDraw, liangdao, haidi, gangFlower, gangPao, gangChainMul, qiangGang, rules
    * }
    */
   function scoreWin(ctx) {
@@ -592,15 +593,18 @@
 
     var timing = [];
     // 注意：亮倒不在这里 —— 它是最后对得分整体 ×2，不参与加算
-    if (ctx.haidi) timing.push({ name: '海底捞', mult: 2, kind: 'timing' });
+    // 海底捞月默认不算番（可在设置里打开）
+    if (ctx.haidi && rules.haidiFan !== false) timing.push({ name: '海底捞', mult: 2, kind: 'timing' });
     if (ctx.gangFlower) timing.push({ name: '杠上开花', mult: 2, kind: 'timing' });
-    // 杠上炮是**乘算**，但**固定 ×2**：不再随「第几杠」递增（杠上杠也是 ×2）
-    //   屁胡 + 杠上炮：1 × 2 = 2 → 2 倍底金
-    //   清一色 + 杠上炮：4 × 2 = 8 → 8 倍底金
-    var gangPaoMul = 1;
+    // 杠上炮是**加算**的时机番（+2），和杠上开花/抢杠胡一样相加；
+    // 「乘算」只出现在两处：**杠链**（杠上杠 ×2、×4 …，第 5 杠封顶）和最后的**亮倒 ×2**
+    var chainMul = 1;
     if (ctx.gangPao) {
-      gangPaoMul = 2;
-      timing.push({ name: '杠上炮', mult: 2, kind: 'timing', mode: 'mul' });
+      timing.push({ name: '杠上炮', mult: 2, kind: 'timing' });
+      chainMul = Math.min(ctx.gangChainMul > 1 ? ctx.gangChainMul : 1, 16);   // 第 5 杠起封顶 ×16
+      if (chainMul > 1) {
+        timing.push({ name: '杠上杠', mult: chainMul, kind: 'timing', mode: 'mul' });
+      }
     }
     if (ctx.qiangGang) timing.push({ name: '抢杠胡', mult: 2, kind: 'timing' });
 
@@ -676,10 +680,10 @@
       }
     }
 
-    // 时机番里的「加算项」（杠上开花/抢杠胡/海底捞）同样相加
+    // 时机番里的「加算项」（杠上开花/抢杠胡/海底捞/杠上炮）都相加
     var timingSum = 0;
     for (var q = 0; q < timing.length; q++) {
-      if (timing[q].mode === 'mul') continue;   // 杠上炮是乘算项，不参与相加
+      if (timing[q].mode === 'mul') continue;   // 杠链是乘算项，不参与相加
       timingSum += timing[q].mult;
     }
 
@@ -687,10 +691,8 @@
     // 一旦有番（哪怕是杠上开花这种时机番），番数和就是那些番相加，不再额外加 1。
     var baseSum = best.typeSum + timingSum;
     if (baseSum === 0) baseSum = 1;         // 屁胡兜底：底金 ×1
-    // 杠上炮「乘算」：番数和 =（牌型番 + 加算时机番）× 2（固定 2 倍，不看第几杠）
-    //   屁胡 + 杠上炮：1 × 2 = 2  → 底金 5 = 10 分
-    //   清一色 + 杠上炮：4 × 2 = 8 → 底金 5 = 40 分
-    var sum = baseSum * gangPaoMul;
+    // 乘算只有两处：杠链（杠上炮那手在第几杠的链上，第 5 杠封顶）和最后的亮倒 ×2
+    var sum = baseSum * chainMul;
     var cap = best.doubleLong ? Math.max(rules.cap, 16) : rules.cap;
     var cappedSum = cap > 0 ? Math.min(sum, cap) : sum;
     var liangdaoMul = ctx.liangdao ? 2 : 1;
@@ -705,9 +707,9 @@
     return {
       fan: multiplier,          // 最终倍数（封顶后 × 亮倒）
       capped: multiplier,       // 结算直接用这个
-      sum: sum,                 // 番数和（已含杠上炮乘算，未封顶、未亮倒）
+      sum: sum,                 // 番数和（已含杠链乘算，未封顶、未亮倒）
       baseSum: baseSum,         // 加算部分（牌型番 + 加算时机番，屁胡兜底 1）
-      gangPaoMul: gangPaoMul,   // 杠上炮倍率（无杠上炮时为 1）
+      gangPaoMul: chainMul,     // 杠链倍率（杠上炮那手在第几杠；没杠上炮/第 1 杠时为 1）
       cappedSum: cappedSum,     // 封顶后、亮倒前
       liangdaoMul: liangdaoMul,
       cap: cap,

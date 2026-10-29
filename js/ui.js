@@ -51,6 +51,10 @@
     },
     { key: 'gangScore', label: '结算杠分（暗杠 2 倍 / 明杠 1 倍 / 直杠 2 倍）', type: 'checkbox' },
     {
+      key: 'haidiFan', label: '海底捞月算番（摸到牌墙最后一张自摸 +2）', type: 'checkbox',
+      note: '默认关闭：海底捞不再加番，免得最后一张把番数抬得太高。'
+    },
+    {
       key: 'huangzhuangPei', label: '荒局时未听牌赔听牌（查大叫）', type: 'checkbox',
       note: '荒庄时没听牌的人要赔给听牌的人（按其牌型番数）；亮倒的人也算听牌者，一样要赔给他。'
     },
@@ -71,6 +75,7 @@
     liangdaoHuangPei: true,
     gangPaoPitHu: true,
     gangScore: true,
+    haidiFan: false,
     huangzhuangPei: true,
     speed: 520
   };
@@ -137,16 +142,8 @@
       });
     }
 
-    // 手机版布局：自动判定 + 转屏/改窗口时重新判定
+    // 手机版布局：开机时判定一次；之后**不再跟随重力感应自动切**，只能在这里手动转
     applyLayout();
-    if (window.addEventListener) {
-      var relayout = function () {
-        clearTimeout(relayout._t);
-        relayout._t = setTimeout(function () { applyLayout(); }, 150);
-      };
-      window.addEventListener('resize', relayout);
-      window.addEventListener('orientationchange', relayout);
-    }
 
     // 先停在开始界面，不自动开局
     showStartScreen();
@@ -383,6 +380,8 @@
   /** 切换布局：加 body class（CSS 全靠它）+ 搬四个方框 + 重渲染 */
   function applyLayout(mode) {
     layoutMode = mode || detectLayoutMode();
+    // 操作历史会被搬到别的父节点里，搬家会让滚动位置归零 —— 先记下来，搬完再放回去
+    var keepLogTop = el.log ? el.log.scrollTop : 0;
     if (document.body && document.body.classList) {
       document.body.classList.remove('layout-mobile', 'layout-portrait', 'layout-landscape');
       if (layoutMode !== 'desktop') {
@@ -394,6 +393,23 @@
     placeHud(layoutMode);
     placeExtras(layoutMode);
     if (game) render();
+    if (el.log) {
+      el.log.scrollTop = keepLogTop;
+      // 布局还没算完时设 scrollTop 不生效，下一帧再补一次
+      setTimeout(function () { if (el.log) el.log.scrollTop = keepLogTop; }, 40);
+    }
+  }
+
+  /** 手动旋转屏幕：竖屏 ↔ 横屏（本作不再跟随重力感应自动旋转） */
+  function rotateLayout() {
+    if (layoutMode === 'desktop') {
+      toast('电脑版不用旋转');
+      return layoutMode;
+    }
+    var next = layoutMode === 'portrait' ? 'landscape' : 'portrait';
+    applyLayout(next);
+    toast(next === 'portrait' ? '已切到竖屏' : '已切到横屏');
+    return next;
   }
 
   /** 清掉手机版的选中态与确认条 */
@@ -1272,10 +1288,10 @@
     });
     html += '<span class="legend-item muted">（横轴=局数，纵轴=累计分数）</span></div>';
 
-    // 每局明细
+    // 每局明细（每局后面带一个「回放」按钮，复盘用）
     html += '<h3>每局明细</h3><div class="table-scroll"><table class="pay-table"><tr><th>局</th><th>庄家</th><th>结果</th>';
     players.forEach(function (p) { html += '<th style="text-align:right">' + p.name + '</th>'; });
-    html += '</tr>';
+    html += '<th>回放</th></tr>';
     history.slice().reverse().forEach(function (h) {
       html += '<tr><td>' + h.round + '</td><td>' + (players[h.dealer] ? players[h.dealer].name : '-') + '</td>' +
         '<td class="round-desc">' + S.describeRound(h, players) + '</td>';
@@ -1283,6 +1299,9 @@
         html += '<td class="num ' + (d > 0 ? 'pos' : (d < 0 ? 'neg' : '')) + '">' +
           (d === 0 ? '0' : signed(d)) + '</td>';
       });
+      html += '<td>' + (h.replay && h.replay.events && h.replay.events.length
+        ? '<button class="btn tiny ghost" data-replay="' + h.round + '">回放</button>'
+        : '<span class="muted">—</span>') + '</td>';
       html += '</tr>';
     });
     html += '</table></div>';
@@ -1323,6 +1342,324 @@
       try { S.drawChart(canvas, players, history); }
       catch (e) { console.error('画折线图失败', e); }
     }
+    // 每局明细里的「回放」按钮（事件委托，表格是拼出来的字符串）
+    if (box && box.addEventListener) {
+      box.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-replay]') : null;
+        if (!btn) return;
+        openReplay(parseInt(btn.dataset.replay, 10));
+      });
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 历史回放（复盘）                                                    */
+  /* ------------------------------------------------------------------ */
+
+  var replay = null;   // { round, rep, frames, turns, idx, playing, speed, timer }
+
+  function addTileTo(list, t) {
+    list.push(t);
+    list.sort(function (a, b) { return a - b; });
+  }
+
+  function removeTileFrom(list, t) {
+    var i = list.indexOf(t);
+    if (i >= 0) list.splice(i, 1);
+    return i >= 0;
+  }
+
+  /** 用记下来的原始事件重建每一帧（回放里所有玩家都明牌） */
+  function replayFrames(rep, roundNo) {
+    var names = state.players.map(function (p) { return p.name; });
+    var hands = rep.deal.map(function (h) { return h.slice(); });
+    var melds = [[], [], []];
+    var discards = [[], [], []];
+    var liangdao = [false, false, false];
+    var drawnCount = 0;
+    var frames = [];
+    var turns = [];
+
+    function push(text) {
+      frames.push({
+        hands: hands.map(function (h) { return h.slice(); }),
+        melds: melds.map(function (m) { return m.slice(); }),
+        discards: discards.map(function (d) { return d.slice(); }),
+        liangdao: liangdao.slice(),
+        drawn: drawnCount,
+        text: text
+      });
+    }
+
+    push('第 ' + roundNo + ' 局发牌（庄家：' + (names[rep.dealer] || '-') + '）');
+    (rep.events || []).forEach(function (ev) {
+      var n = names[ev.seat] || '';
+      var tn = T.nameOf(ev.tile);
+      if (ev.t === 'draw') {
+        drawnCount++;
+        addTileTo(hands[ev.seat], ev.tile);
+        turns.push(frames.length);
+        push(n + (ev.fromKong ? ' 杠后补牌 ' : ' 摸 ') + tn);
+      } else if (ev.t === 'discard') {
+        removeTileFrom(hands[ev.seat], ev.tile);
+        discards[ev.seat].push(ev.tile);
+        push(n + ' 打出 ' + tn);
+      } else if (ev.t === 'pong') {
+        removeTileFrom(hands[ev.seat], ev.tile);
+        removeTileFrom(hands[ev.seat], ev.tile);
+        melds[ev.seat].push({ kind: 'pong', tile: ev.tile });
+        if (ev.from !== null && ev.from !== undefined) removeTileFrom(discards[ev.from], ev.tile);
+        turns.push(frames.length);
+        push(n + ' 碰 ' + tn);
+      } else if (ev.t === 'ankong' || ev.t === 'zhigang' || ev.t === 'addkong') {
+        var kind = ev.t === 'ankong' ? 'ankong' : (ev.t === 'zhigang' ? 'zhigang' : 'mingkong');
+        var cnt = kind === 'ankong' ? 4 : (kind === 'zhigang' ? 3 : 1);
+        for (var k = 0; k < cnt; k++) removeTileFrom(hands[ev.seat], ev.tile);
+        if (kind === 'addkong') {
+          for (var mi = 0; mi < melds[ev.seat].length; mi++) {
+            if (melds[ev.seat][mi].kind === 'pong' && melds[ev.seat][mi].tile === ev.tile) {
+              melds[ev.seat][mi] = { kind: 'mingkong', tile: ev.tile };
+              break;
+            }
+          }
+        } else {
+          melds[ev.seat].push({ kind: kind, tile: ev.tile });
+        }
+        if (kind === 'zhigang' && ev.from !== null && ev.from !== undefined) {
+          removeTileFrom(discards[ev.from], ev.tile);
+        }
+        push(n + ' ' + (kind === 'ankong' ? '暗杠 ' : (kind === 'zhigang' ? '直杠 ' : '补杠 ')) + tn);
+      } else if (ev.t === 'liangdao') {
+        liangdao[ev.seat] = true;
+        push(n + ' 亮倒');
+      } else if (ev.t === 'win') {
+        if (!ev.selfDraw) addTileTo(hands[ev.seat], ev.tile);
+        push(n + (ev.selfDraw ? ' 自摸 ' : ' 胡 ') + tn +
+          (ev.fan ? '（' + ev.fan + ' 倍底金）' : ''));
+      } else if (ev.t === 'huang') {
+        push('荒庄（牌墙摸完）');
+      }
+    });
+    return { frames: frames, turns: turns, rep: rep };
+  }
+
+  function replayTurnOptions() {
+    if (!replay) return '';
+    var html = '<option value="0">第 0 巡（发牌）</option>';
+    replay.turns.forEach(function (step, i) {
+      html += '<option value="' + step + '">第 ' + (i + 1) + ' 巡 · ' +
+        replay.frames[step].text.replace(/</g, '') + '</option>';
+    });
+    return html;
+  }
+
+  function openReplay(roundNo) {
+    var g = game;
+    var h = null;
+    (g ? g.history : []).forEach(function (x) { if (x.round === roundNo) h = x; });
+    if (!h || !h.replay || !h.replay.events || !h.replay.events.length) {
+      toast('这一局没有回放数据（只记最近的对局）');
+      return;
+    }
+    closeReplay();
+    var built = replayFrames(h.replay, roundNo);
+    replay = {
+      round: roundNo, rep: h.replay, frames: built.frames, turns: built.turns,
+      idx: 0, playing: false, speed: 3000, timer: null
+    };
+
+    var host = $('replay-host');
+    if (!host) return;
+    if (!host.dataset.built) {
+      host.dataset.built = '1';
+      host.innerHTML =
+        '<div class="replay-panel">' +
+        '  <div class="replay-head"><span id="replay-title">回放</span>' +
+        '    <button class="btn tiny ghost" data-rp="exit">退出</button></div>' +
+        '  <div class="replay-status"><span id="replay-step"></span><span id="replay-text"></span></div>' +
+        '  <div class="replay-body" id="replay-body"></div>' +
+        '  <div class="replay-wall" id="replay-wall" hidden></div>' +
+        '  <div class="replay-bar">' +
+        '    <button class="btn tiny" data-rp="prev">上一步</button>' +
+        '    <button class="btn tiny primary" data-rp="play" id="replay-play">播放</button>' +
+        '    <button class="btn tiny" data-rp="next">下一步</button>' +
+        '    <button class="btn tiny" data-rp="speed" id="replay-speed">慢速 3s</button>' +
+        '    <button class="btn tiny" data-rp="wall">牌山（按住）</button>' +
+        '    <select id="replay-turn" class="replay-turn"></select>' +
+        '  </div>' +
+        '</div>';
+
+      host.addEventListener('click', function (e) {
+        var act = e.target && e.target.closest ? e.target.closest('[data-rp]') : null;
+        if (act) { replayAction(act.dataset.rp); return; }
+        // 暂停状态下点空白处 = 下一步
+        if (replay && !replay.playing) {
+          var t = e.target;
+          if (t === host || (t.classList && (t.classList.contains('replay-body') || t.classList.contains('replay-panel')))) {
+            replayGo(replay.idx + 1);
+          }
+        }
+      });
+      // 牌山：按住看，松手收起
+      host.addEventListener('pointerdown', function (e) {
+        var b = e.target && e.target.closest ? e.target.closest('[data-rp="wall"]') : null;
+        if (b) { if (e.preventDefault) e.preventDefault(); showReplayWall(true); }
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+        host.addEventListener(ev, function () { showReplayWall(false); });
+      });
+      host.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'replay-turn') {
+          var step = parseInt(e.target.value, 10);
+          if (!isNaN(step)) { replayPause(); replayGo(step); }
+        }
+      });
+    }
+    host.hidden = false;
+    var title = $('replay-title');
+    if (title) title.textContent = '第 ' + roundNo + ' 局回放（明牌）';
+    var sel = $('replay-turn');
+    if (sel) sel.innerHTML = replayTurnOptions();
+    renderReplay();
+  }
+
+  function closeReplay() {
+    if (replay) clearTimeout(replay.timer);
+    replay = null;
+    var host = $('replay-host');
+    if (host) {
+      host.hidden = true;
+      host.innerHTML = '';
+      delete host.dataset.built;    // 下次打开要重新搭界面
+    }
+  }
+
+  function replayCurrentTurn() {
+    if (!replay) return 0;
+    var cur = 0;
+    replay.turns.forEach(function (step) { if (step <= replay.idx) cur = step; });
+    return cur;
+  }
+
+  function tileFace(t, cls) {
+    return '<span class="tile ' + (cls || 'xs') + '" title="' + T.nameOf(t) + '">' + T.faceSvg(t) + '</span>';
+  }
+
+  function renderReplay() {
+    if (!replay) return;
+    var f = replay.frames[replay.idx];
+    var body = $('replay-body');
+    if (!body) return;
+    var html = '';
+    [2, 1, 0].forEach(function (seat) {
+      var p = state.players[seat];
+      html += '<div class="rp-seat' + (seat === 0 ? ' rp-self' : '') + '">';
+      html += '<div class="rp-name">' + p.name +
+        (f.liangdao[seat] ? '<span class="tag liangdao">亮倒</span>' : '') + '</div>';
+      html += '<div class="rp-row"><span class="row-label">手牌</span>' +
+        f.hands[seat].map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
+      if (f.melds[seat].length) {
+        var mh = '';
+        f.melds[seat].forEach(function (m) {
+          var n = m.kind === 'pong' ? 3 : 4;
+          for (var i = 0; i < n; i++) mh += tileFace(m.tile, 'rp-tile');
+          mh += '<span style="display:inline-block;width:6px"></span>';
+        });
+        html += '<div class="rp-row"><span class="row-label">副露</span>' + mh + '</div>';
+      }
+      html += '<div class="rp-row"><span class="row-label">牌河</span>' +
+        f.discards[seat].map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
+      html += '</div>';
+    });
+    body.innerHTML = html;
+
+    var stepEl = $('replay-step');
+    if (stepEl) stepEl.textContent = replay.idx + ' / ' + (replay.frames.length - 1) + ' 步';
+    var textEl = $('replay-text');
+    if (textEl) textEl.textContent = f.text;
+    var playEl = $('replay-play');
+    if (playEl) playEl.textContent = replay.playing ? '暂停' : '播放';
+    var spEl = $('replay-speed');
+    if (spEl) spEl.textContent = replay.speed === 3000 ? '慢速 3s' : '快速 1s';
+    var sel = $('replay-turn');
+    if (sel) sel.value = String(replayCurrentTurn());
+    if (replay.playing) scrollReplayToBottom();
+    if (!replay.playing) showReplayWall(false);
+  }
+
+  function scrollReplayToBottom() {
+    var body = $('replay-body');
+    if (!body) return;
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function showReplayWall(on) {
+    var box = $('replay-wall');
+    if (!box) return;
+    if (!on) { box.hidden = true; box.innerHTML = ''; return; }
+    if (!replay) return;
+    var f = replay.frames[replay.idx];
+    var wall = replay.rep.wall || [];
+    var left = Math.max(0, wall.length - f.drawn);
+    var rest = wall.slice(0, left);
+    var html = '<div class="replay-wall-head">牌山剩余 ' + left + ' 张' +
+      '<span class="muted">（按实际摸牌顺序倒着摸）</span></div>' +
+      '<div class="rp-row">' + rest.map(function (t) { return tileFace(t, 'rp-tile'); }).join('') + '</div>';
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+
+  function replayGo(i) {
+    if (!replay) return;
+    replay.idx = Math.max(0, Math.min(i, replay.frames.length - 1));
+    renderReplay();
+  }
+
+  function replayPause() {
+    if (!replay) return;
+    replay.playing = false;
+    clearTimeout(replay.timer);
+    renderReplay();
+  }
+
+  function replayTick() {
+    if (!replay) return;
+    clearTimeout(replay.timer);
+    replay.timer = setTimeout(function () {
+      if (!replay || !replay.playing) return;
+      if (replay.idx >= replay.frames.length - 1) {
+        replay.playing = false;
+        renderReplay();
+        return;
+      }
+      replay.idx++;
+      renderReplay();
+      replayTick();
+    }, replay.speed);
+  }
+
+  function replayPlay() {
+    if (!replay) return;
+    if (replay.playing) { replayPause(); return; }
+    if (replay.idx >= replay.frames.length - 1) replay.idx = 0;
+    replay.playing = true;
+    renderReplay();
+    replayTick();
+  }
+
+  function replayAction(kind) {
+    if (!replay) return;
+    if (kind === 'exit') { closeReplay(); return; }
+    if (kind === 'prev') { replayPause(); replayGo(replay.idx - 1); return; }
+    if (kind === 'next') { replayPause(); replayGo(replay.idx + 1); return; }
+    if (kind === 'play') { replayPlay(); return; }
+    if (kind === 'speed') {
+      replay.speed = replay.speed === 3000 ? 1000 : 3000;
+      renderReplay();
+      if (replay.playing) replayTick();
+      return;
+    }
+    // 'wall' 是按住显示的，由 pointerdown/up 处理
   }
 
   function openSettings() {
@@ -1343,25 +1680,34 @@
     });
     html += '</div>';
 
-    openModal(html, [
-      { label: '取消', cls: 'ghost', onClick: closeModal },
-      {
-        label: '保存', cls: 'primary', onClick: function () {
-          SETTING_DEFS.forEach(function (def) {
-            var node = $('set-' + def.key);
-            if (def.type === 'checkbox') settings[def.key] = node.checked;
-            else settings[def.key] = parseInt(node.value, 10);
-          });
-          if (game) {
-            game.rules = Object.assign({}, R.DEFAULT_RULES, settings);
-            game.speed = settings.speed;
-          }
-          closeModal();
-          render();
-          toast('设置已保存');
+    var acts = [];
+    // 手机版：不再跟随重力感应，这里给一个手动旋转按钮
+    if (isMobileLayout()) {
+      acts.push({
+        label: layoutMode === 'portrait' ? '旋转成横屏' : '旋转成竖屏',
+        cls: 'ghost',
+        onClick: function () { rotateLayout(); closeModal(); openSettings(); }
+      });
+    }
+    acts.push({ label: '取消', cls: 'ghost', onClick: closeModal });
+    acts.push({
+      label: '保存', cls: 'primary', onClick: function () {
+        SETTING_DEFS.forEach(function (def) {
+          var node = $('set-' + def.key);
+          if (!node) return;
+          if (def.type === 'checkbox') settings[def.key] = node.checked;
+          else settings[def.key] = parseInt(node.value, 10);
+        });
+        if (game) {
+          game.rules = Object.assign({}, R.DEFAULT_RULES, settings);
+          game.speed = settings.speed;
         }
+        closeModal();
+        render();
+        toast('设置已保存');
       }
-    ]);
+    });
+    openModal(html, acts);
   }
 
   function openRules() {
@@ -1380,12 +1726,8 @@
       '<li>七对 +4　龙七对 +8　双龙七对 +16</li>',
       '<li>清一色 +4　大三元 +8　小三元 +4　手抓一 +4</li>',
       '<li>卡五星 +2（胡 5 筒 / 5 条，且是 456 的嵌张）</li>',
-      '<li>杠上开花 +2　抢杠胡 +2　海底捞 +2</li>',
-      '<li><b>杠上炮是乘算，但固定 ×2</b>：（牌型番 + 加算时机番）× 2，乘完再封顶（不看第几杠）。</li>',
-      '<li>例：底金 5、捉炮、卡五星 + 清一色 → 5 ×（2+4）= 30 分；' +
-      '再加亮倒 → 5 ×（2+4）× 2 = 60 分。</li>',
-      '<li>例：底金 5 的屁胡被杠上炮 → 5 × 1 × 2 = <b>10 分</b>；' +
-      '清一色被杠上炮 → 5 × 4 × 2 = <b>40 分</b>。</li>',
+      '<li>杠上开花 +2　抢杠胡 +2　杠上炮 +2　海底捞 +2（默认关闭，可在设置里打开）</li>',
+      '<li>手抓一 +4：4 副碰/杠 + 单骑，自摸和捉炮都算。</li>',
       '</ul>',
       '<h3>亮倒：收益与风险</h3><ul>',
       '<li><b>收益</b>：亮倒后胡牌番数整体 ×2；' +
@@ -1405,10 +1747,9 @@
       '<li>所以番数低的牌（尤其是屁胡 ×1）翻倍也多赚不了多少，却要承担一样的风险 —— ' +
       '电脑是按期望值算分决定亮不亮倒的，会同时看<b>剩余抽牌数、听张宽度、剩余和牌张数、放铳风险</b>，' +
       '<b>屁胡基本不亮</b>，而且电脑会按「亮倒当时的情况」复盘：这类情况赢过更敢亮、输过更保守（对局记录里能看到）。</li>',
-      '<li>亮倒可以在自己摸完牌之后宣布，也可以在碰 / 杠 / 加杠之后刚听牌时宣布。</li>',
       '</ul>',
       '<h3>什么时候会问你要不要亮倒</h3><ul>',
-      '<li>自己摸完牌之后；以及<b>碰 / 杠 / 加杠之后能听牌时</b>也会问。</li>',
+      '<li><b>只有自己回合、摸完牌之后</b>才会问；碰牌之后不再问（碰完直接打牌）。</li>',
       '<li><b>不想亮倒的话，直接点手牌就能出牌</b>，不用先点「过」。</li>',
       '</ul>',
       '<h3>杠分（立即结算）</h3><ul>',
@@ -1416,16 +1757,15 @@
       '<li>明杠（碰后加杠/补杠）：其他两家各付 1 倍底金。</li>',
       '<li>直杠：点杠者单独付 2 倍底金。</li>',
       '<li><b>杠上杠从第二杠起翻倍</b>：加杠链是 1 → 2 → 4 倍底金；' +
-      '暗杠/直杠链是 2 → 4 → 8 倍底金，以此类推。<b>每一杠都单独结算</b>，不是只算最后一杠。</li>',
+      '暗杠/直杠链是 2 → 4 → 8 倍底金，以此类推；<b>第 5 杠起封顶不再翻倍</b>。' +
+      '<b>每一杠都单独结算</b>，不是只算最后一杠。</li>',
       '<li><b>只有加杠（碰后补杠）能被抢杠胡</b>；暗杠和直杠都抢不了。</li>',
       '</ul>',
       '<h3>杠上炮</h3><ul>',
-      '<li>杠后打出的那张牌被别人胡，就是杠上炮：<b>番数和 =（牌型番 + 加算时机番）× 2</b>，' +
+      '<li>杠后打出的那张牌被别人胡，就是杠上炮：番数和 =（牌型番 + 加算时机番 + 杠上炮 2），' +
       '结算 = 底金 × 番数和。</li>',
-      '<li><b>固定 ×2，不随「第几杠」递增</b> —— 杠上杠也还是 ×2，乘完再封顶（默认 ×8）。</li>',
-      '<li>例：底金 5 的屁胡被杠上炮 → 5 × 1 × 2 = <b>10 分</b>；' +
-      '清一色被杠上炮 → 5 × 4 × 2 = <b>40 分</b>。</li>',
-      '<li><b>杠上炮连屁胡也能胡</b>（普通出牌时屁胡只能自摸）。</li>',
+      '<li>杠上炮是加算项；乘算只有两处：杠链（杠上杠 ×2、×4 …，第 5 杠起封顶）和亮倒 ×2。</li>',
+      '<li>杠上炮连屁胡也能胡（普通出牌时屁胡只能自摸）。</li>',
       '</ul>',
       '<h3>结算</h3><ul>',
       '<li>自摸：两家各出一份；点炮：由点炮者出一份。</li>',
@@ -1463,6 +1803,13 @@
     detectLayout: detectLayoutMode,
     // 手机版二次点击出牌的选中态（测试用）
     getMobilePicked: function () { return mobilePicked; },
-    clearMobilePick: clearMobilePick
+    clearMobilePick: clearMobilePick,
+    // 回放（复盘）
+    openReplay: openReplay,
+    closeReplay: closeReplay,
+    getReplay: function () { return replay; },
+    buildReplayFrames: function (rep, roundNo) { return replayFrames(rep, roundNo); },
+    // 手动旋转屏幕（不再跟随重力感应）
+    rotateLayout: rotateLayout
   };
 })();

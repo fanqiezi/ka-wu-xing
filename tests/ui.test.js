@@ -792,7 +792,7 @@ function boot(seed) {
       await sleep(500);
 
       const html = modalHost.children.map(c => c.innerHTML).join('');
-      assert.ok(html.indexOf('杠上炮 ×2') >= 0, '应把杠上炮显示成乘算 ×2');
+      assert.ok(html.indexOf('杠上炮 +2') >= 0, '杠上炮现在是加算 +2');
       assert.ok(html.indexOf('番数和 2') >= 0, '番数和应为 2，实际：' + html.replace(/<[^>]+>/g, ' ').slice(0, 160));
       assert.ok(html.indexOf('合计 10 分') >= 0, '合计应为 10 分（底金 5 × 2 倍底金）');
       assert.ok(html.indexOf('底 +1') < 0, '有番时不该再显示「底 +1」');
@@ -924,6 +924,114 @@ function boot(seed) {
     await sleep(3000);                     // pitHuBlocked 的提示 2.6 秒后收起
     assert.ok(!dom.hasClass(toasts()[0], 'show'), '超时后提示条应隐藏');
     assert.strictEqual(toasts().length, 1, '隐藏后也不该堆出新的提示条，实际 ' + toasts().length);
+  });
+
+  /* ------------------------------------------------------------------ */
+  group('对局记录 · 回放');
+
+  await atest('回放：把一局的记录重建成逐帧（三家明牌、牌张守恒）', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    await sleep(300);
+    // 造一局全电脑对局，拿到带回放数据的记录
+    g.players.forEach(p => { p.isAI = true; });
+    await g.startRound();
+    const h = g.history[g.history.length - 1];
+    assert.ok(h && h.replay, '这一局应有回放数据');
+
+    const built = ui.buildReplayFrames(h.replay, h.round);
+    assert.ok(built.frames.length >= 3, '至少「发牌 + 若干步」，实际 ' + built.frames.length);
+    assert.ok(built.turns.length >= 1, '应该有巡可以跳转');
+
+    // 第 0 帧 = 刚发牌：三家各 13 张
+    const f0 = built.frames[0];
+    f0.hands.forEach((hand, seat) => {
+      assert.strictEqual(hand.length, 13, '第 ' + seat + ' 家起手 13 张');
+    });
+
+    // 牌张守恒：每一帧里「手牌 + 副露 + 牌河 + 牌山剩余」正好是整副 84 张（每种 4 张）
+    const TT = win.KWX.Tiles.TYPES || 21;
+    built.frames.forEach((f, idx) => {
+      const counts = new Array(TT).fill(0);
+      const add = (t) => { counts[t] = (counts[t] || 0) + 1; };
+      f.hands.forEach(hh => hh.forEach(add));
+      f.melds.forEach(ms => ms.forEach(m => {
+        const n = m.kind === 'pong' ? 3 : 4;
+        for (let i = 0; i < n; i++) add(m.tile);
+      }));
+      f.discards.forEach(ds => ds.forEach(add));
+      const left = Math.max(0, h.replay.wall.length - f.drawn);
+      h.replay.wall.slice(0, left).forEach(add);
+      const total = counts.reduce((a, b) => a + b, 0);
+      assert.strictEqual(total, 84, '第 ' + idx + ' 帧应有 84 张牌，实际 ' + total);
+      counts.forEach((c, t) => {
+        assert.ok(c <= 4, '第 ' + idx + ' 帧 ' + win.KWX.Tiles.nameOf(t) + ' 超过 4 张：' + c);
+      });
+    });
+
+    // 最后一帧能看到结果（胡牌 / 荒庄的文字）
+    const last = built.frames[built.frames.length - 1];
+    assert.ok(/自摸|胡 |荒庄/.test(last.text), '最后一帧应写明结果，实际：' + last.text);
+  });
+
+  await atest('回放：只有带数据的局才有「回放」按钮', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    g.stop();
+    dom.byId['btn-history'].click();
+    const host = dom.byId['modal-host'];
+    const html = host.children.map(c => c.innerHTML).join('');
+    const btnCount = (html.match(/data-replay="/g) || []).length;
+    const withData = g.history.filter(h => h.replay && h.replay.events && h.replay.events.length).length;
+    assert.strictEqual(btnCount, withData, '回放按钮数应与带回放数据的局数一致');
+    assert.ok(btnCount > 0, '应该至少有一个回放按钮');
+    dom.findAll(host, n => dom.hasClass(n, 'btn'))
+      .filter(b => b.textContent === '关闭')[0].click();
+  });
+
+  await atest('设置里能手动旋转屏幕（不再跟随重力感应自动切）', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    if (g) g.stop();
+    const btnTexts = () => dom.findAll(dom.byId['modal-host'], n => dom.hasClass(n, 'btn')).map(b => b.textContent);
+    const closeSettings = () => {
+      dom.findAll(dom.byId['modal-host'], n => dom.hasClass(n, 'btn'))
+        .filter(b => b.textContent === '取消')[0].click();
+    };
+
+    ui.setLayout('portrait');
+    dom.byId['btn-settings'].click();
+    assert.ok(btnTexts().some(t => t.indexOf('旋转成横屏') >= 0),
+      '竖屏时设置里应有「旋转成横屏」按钮，实际 ' + btnTexts().join('/'));
+    closeSettings();
+
+    // 手动旋转：竖屏 ↔ 横屏
+    assert.strictEqual(ui.rotateLayout(), 'landscape');
+    assert.strictEqual(ui.getLayout(), 'landscape');
+    dom.byId['btn-settings'].click();
+    assert.ok(btnTexts().some(t => t.indexOf('旋转成竖屏') >= 0),
+      '横屏时按钮文案应变成「旋转成竖屏」，实际 ' + btnTexts().join('/'));
+    closeSettings();
+    assert.strictEqual(ui.rotateLayout(), 'portrait');
+
+    // 窗口尺寸变化不再自动改布局（重力感应已停用）
+    if (win.dispatch) { win.dispatch('resize'); win.dispatch('orientationchange'); }
+    assert.strictEqual(ui.getLayout(), 'portrait', 'resize / orientationchange 不该自己切布局');
+  });
+
+  await atest('海底捞月番型默认关闭，设置里可以打开', async () => {
+    const ui = win.KWX_UI;
+    assert.strictEqual(ui.settings.haidiFan, false, '海底捞默认不算番');
+    const g = ui.getGame();
+    if (g) g.stop();
+    dom.byId['btn-settings'].click();
+    const html = dom.byId['modal-host'].children.map(c => c.innerHTML).join('');
+    assert.ok(html.indexOf('海底捞') >= 0, '设置里应有海底捞开关');
+    assert.ok(html.indexOf('id="set-haidiFan"') >= 0, '海底捞开关的 id 应在');
+    assert.ok(html.indexOf('id="set-haidiFan" checked') < 0, '默认不该勾上');
+    dom.findAll(dom.byId['modal-host'], n => dom.hasClass(n, 'btn'))
+      .filter(b => b.textContent === '取消')[0].click();
   });
 
   /* ------------------------------------------------------------------ */

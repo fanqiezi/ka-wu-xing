@@ -261,7 +261,7 @@ test('手抓一 ×4（加算：手抓一 4 + 碰碰胡 2 = 6）', () => {
   assert.strictEqual(s.typeFan, 6);
 });
 
-test('时机番加算：杠上开花/抢杠胡/海底捞 各 +2（屁胡的底 1 不再另加）；亮倒最后整体 ×2', () => {
+test('时机番加算：杠上开花/抢杠胡 各 +2；海底捞默认不算番（可开）；亮倒最后整体 ×2', () => {
   const base = scoreOf('123456789t 123b 11b', '3b');
   assert.strictEqual(base.fan, 1, '屁胡 = 1 倍底金（一个番都没有时才这样算）');
   // 有了番就不再额外加屁胡的 1：番数和就是那个番本身
@@ -270,16 +270,38 @@ test('时机番加算：杠上开花/抢杠胡/海底捞 各 +2（屁胡的底 1
   assert.strictEqual(g.isPitHu, true, '牌型本身仍是屁胡');
   const q = scoreOf('123456789t 123b 11b', '3b', { qiangGang: true });
   assert.strictEqual(q.fan, 2);
-  const h = scoreOf('123456789t 123b 11b', '3b', { haidi: true });
-  assert.strictEqual(h.fan, 2);
+  // 海底捞月番型默认关闭
+  const hOff = scoreOf('123456789t 123b 11b', '3b', { haidi: true });
+  assert.strictEqual(hOff.fan, 1, '默认不算海底捞：还是 1 倍底金');
+  assert.ok(!hOff.items.some(i => i.name === '海底捞'), '默认不该出现海底捞番型');
+  // 打开开关后 +2
+  const h = scoreOf('123456789t 123b 11b', '3b', {
+    haidi: true, rules: { haidiFan: true }
+  });
+  assert.strictEqual(h.fan, 2, '打开后：海底捞 +2');
   // 有牌型番时也不加底 1：清一色 + 海底捞 = 4+2 = 6（不是 4+1+2）
-  const qy = scoreOf('123t 456t 789t 123t 22t', '3t', { haidi: true });
+  const qy = scoreOf('123t 456t 789t 123t 22t', '3t', {
+    haidi: true, rules: { haidiFan: true }
+  });
   assert.ok(qy.items.some(i => i.name === '清一色'), JSON.stringify(qy.items));
   assert.strictEqual(qy.sum, 6, '清一色 4 + 海底捞 2 = 6');
   // 亮倒不参与加算，而是最后把得分整体翻倍
   const l = scoreOf('123456789t 123b 11b', '3b', { liangdao: true });
   assert.strictEqual(l.fan, base.fan * 2);
   assert.strictEqual(l.cappedSum, base.fan, '加算部分不含亮倒');
+});
+
+test('手抓一捉炮也算（4 副碰/杠 + 单骑，别人打出来一样算番）', () => {
+  const melds = [
+    { kind: 'pong', tile: H('1t')[0] },
+    { kind: 'pong', tile: H('2t')[0] },
+    { kind: 'pong', tile: H('3b')[0] },
+    { kind: 'pong', tile: H('4b')[0] }
+  ];
+  const disc = R.canWinOnDiscard([H('5t')[0]], melds, H('5t')[0], { rules: R.DEFAULT_RULES });
+  assert.ok(disc, '手抓一应该能捉炮');
+  assert.ok(disc.items.some(i => i.name === '手抓一'), JSON.stringify(disc.items));
+  assert.strictEqual(disc.isPitHu, false, '手抓一有番，不是屁胡');
 });
 
 test('加算计分：底金 5、卡五星 + 清一色 = 5 × (2+4) = 30', () => {
@@ -299,36 +321,41 @@ test('加算计分：底金 5、卡五星 + 清一色 = 5 × (2+4) = 30', () => 
   assert.strictEqual(l.fan * 5, 60, '底金 5 × 6 × 2 = 60');
 });
 
-test('杠上炮固定 ×2（不再按第几杠递增）：清一色 4 × 2 = 8 → 底金 5 = 40', () => {
+test('杠上炮是加算 +2（乘算只剩杠链与亮倒）：清一色 4+2 = 6 → 底金 5 = 30', () => {
   const s = scoreOf('123t 456t 789t 123t 22t', '3t', {
-    rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: 1
+    rules: { baseScore: 5, cap: 8 }, gangPao: true
   });
   assert.ok(s.items.some(i => i.name === '清一色'), JSON.stringify(s.items));
   const gp = s.items.filter(i => i.name === '杠上炮')[0];
   assert.ok(gp, '应有杠上炮');
-  assert.strictEqual(gp.mode, 'mul', '杠上炮是乘算项');
-  assert.strictEqual(gp.mult, 2, '杠上炮固定 ×2');
-  assert.strictEqual(s.baseSum, 4, '加算部分只有清一色 4');
-  assert.strictEqual(s.sum, 8, '4 × 2 = 8');
-  assert.strictEqual(s.fan * 5, 40, '底金 5 × 8 = 40');
+  assert.strictEqual(gp.mult, 2, '杠上炮 +2 番');
+  assert.ok(!gp.mode, '杠上炮是加算项，不再是乘算项');
+  assert.strictEqual(s.baseSum, 6, '清一色 4 + 杠上炮 2 = 6');
+  assert.strictEqual(s.sum, 6, '第 1 杠没有杠链乘算');
+  assert.strictEqual(s.fan * 5, 30, '底金 5 × 6 = 30');
 
-  // 屁胡 + 杠上炮：加算部分是屁胡兜底的 1，乘完就是 2 倍底金
+  // 屁胡 + 杠上炮：加算部分是杠上炮自己的 2（屁胡的兜底 1 不再另加）→ 2 倍底金
   const pit = scoreOf('123456789t 123b 11b', '3b', {
-    rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: 1
+    rules: { baseScore: 5, cap: 8 }, gangPao: true
   });
-  assert.strictEqual(pit.baseSum, 1, '屁胡兜底 1');
-  assert.strictEqual(pit.sum, 2, '1 × 2 = 2 倍底金');
+  assert.strictEqual(pit.baseSum, 2, '加算部分就是杠上炮的 2（屁胡兜底不再另加）');
+  assert.strictEqual(pit.sum, 2, '2 倍底金');
   assert.strictEqual(pit.fan * 5, 10, '底金 5 × 2 = 10');
   assert.strictEqual(pit.isPitHu, true, '有杠上炮也还是屁胡（所以平时不能捉炮）');
 
-  // 杠上杠的第 2 杠、第 3 杠也还是 ×2（原来会变成 ×4、×6）
-  [2, 3].forEach(function (idx) {
-    const sx = scoreOf('123t 456t 789t 123t 22t', '3t', {
-      rules: { baseScore: 5, cap: 8 }, gangPao: true, gangPaoIndex: idx
-    });
-    assert.strictEqual(sx.sum, 8, '第 ' + idx + ' 杠也是 ×2（清一色 4 × 2 = 8），实际 ' + sx.sum);
-    assert.strictEqual(sx.fan * 5, 40, '第 ' + idx + ' 杠：底金 5 × 8 = 40');
+  // 杠链乘算：第 2 杠 ×2、第 5 杠 ×16、第 6 杠也还是 ×16（第 5 杠起封顶）
+  const withChain = (mul) => scoreOf('123t 456t 789t 123t 22t', '3t', {
+    rules: { baseScore: 5, cap: 999 }, gangPao: true, gangChainMul: mul
   });
+  assert.strictEqual(withChain(2).sum, 12, '第 2 杠：（4+2）×2 = 12');
+  assert.strictEqual(withChain(16).sum, 96, '第 5 杠：（4+2）×16 = 96');
+  assert.strictEqual(withChain(32).sum, 96, '第 6 杠也按 ×16 封顶');
+  assert.ok(withChain(16).items.some(i => i.name === '杠上杠' && i.mult === 16), '应显示杠上杠 ×16');
+  // 没有杠上炮时，杠链不该影响番数
+  const noGangPao = scoreOf('123t 456t 789t 123t 22t', '3t', {
+    rules: { baseScore: 5, cap: 999 }, gangChainMul: 16
+  });
+  assert.strictEqual(noGangPao.sum, 4, '没杠上炮就只有清一色 4 番');
 });
 
 test('封顶 ×8：加算后 七对4 + 清一色4 = 8', () => {

@@ -245,6 +245,11 @@
 
   /* ============================ 对局记录 ============================ */
 
+  /** 记一步回放事件（只在对局记录里用，不影响牌局） */
+  Game.prototype.rec = function (ev) {
+    if (this.replay) this.replay.events.push(ev);
+  };
+
   /** 结算前后对比分数，记下一局的输赢明细 */
   Game.prototype.recordRound = function (result) {
     var self = this;
@@ -275,6 +280,7 @@
       scores: this.players.map(function (p) { return p.score; }),
       winners: winners,
       gangs: (result && result.gangs) ? result.gangs : null,
+      replay: this.replay || null,
       tenpai: (result && result.type === 'huang')
         ? result.tenpai.map(function (t) { return !!t.tenpai; })
         : null
@@ -316,6 +322,14 @@
       }
     }
     this.players.forEach(function (p) { p.hand = T.sorted(p.hand); });
+    // 回放：记下起手牌 + 牌山顺序，之后每一步事件都记进来（对局记录的「回放」用）
+    this.replay = {
+      dealer: this.dealer,
+      round: this.roundNo,
+      deal: this.players.map(function (p) { return p.hand.slice(); }),
+      wall: this.wall.slice(),          // pop() 从尾部取牌，回放时按张数推算剩余牌山
+      events: []
+    };
     this.playing = true;
     this.emit('roundStart', { dealer: this.dealer, roundNo: this.roundNo });
     this.pushLog('第 ' + this.roundNo + ' 局开始，庄家：' + this.players[this.dealer].name, 'hl');
@@ -355,6 +369,7 @@
         p.lastDraw = t;
         p.passWin = false;
         ctx.haidi = this.wall.length === 0;
+        this.rec({ t: 'draw', seat: seat, tile: t, wallLeft: this.wall.length });
         this.emit('draw', { seat: seat, tile: t });
         if (!p.isAI) await sleep(60);
       } else {
@@ -445,6 +460,7 @@
         p.liangdaoSit = ldp ? ldp.sitKey : null;      // 按情况分桶的 key（见 ai.js situationKey）
         p.liangdaoFeature = ldp ? ldp.sitLabel : null; // 给界面看的情况描述
         this.say(seat, '亮倒！番数 ×2', 'liangdao');
+        this.rec({ t: 'liangdao', seat: seat });
         this.emit('liangdao', { seat: seat, sit: p.liangdaoFeature });
         continue;
       }
@@ -465,6 +481,7 @@
         p.hand = T.sorted(p.hand);
         p.lastDraw = rt;
         ctx.haidi = this.wall.length === 0;
+        this.rec({ t: 'draw', seat: seat, tile: rt, fromKong: true, wallLeft: this.wall.length });
         this.emit('draw', { seat: seat, tile: rt, fromKong: true });
         await sleep(this.speed * 0.5);
         continue;
@@ -492,10 +509,12 @@
     if (this.wall.length > 0 && p.lastDraw !== null) {
       var an = R.canAnKongList(p.hand);
       for (var i = 0; i < an.length; i++) acts.push({ type: 'ankong', tile: an[i] });
-      var add = R.canAddKong(p.hand, p.melds);
+      // 补杠只能在「摸到第 4 张的当回合」补：这一手不补，后面就作废了
+      var add = R.canAddKong(p.hand, p.melds).filter(function (t) { return t === p.lastDraw; });
       for (var j = 0; j < add.length; j++) acts.push({ type: 'addkong', tile: add[j] });
     }
-    if (this.canLiangdao(seat)) acts.push({ type: 'liangdao' });
+    // 亮倒只在自己回合、摸完牌之后问（碰完之后不再问）
+    if (p.lastDraw !== null && this.canLiangdao(seat)) acts.push({ type: 'liangdao' });
     if (acts.length) acts.push({ type: 'pass' });
     return acts;
   };
@@ -630,6 +649,7 @@
     if (p.liangdao) p.liangdaoReveal = R.revealTiles(p.hand, p.melds);
     p.discards.push(tile);
     this.lastDiscard = { tile: tile, seat: seat };
+    this.rec({ t: 'discard', seat: seat, tile: tile });
     this.emit('discard', { seat: seat, tile: tile });
     this.pushLog(p.name + ' 打出 ' + T.nameOf(tile));
     return tile;
@@ -670,8 +690,9 @@
         huResult = R.canWinOnDiscard(p.hand, p.melds, tile, {
           rules: this.rules,
           liangdao: p.liangdao,
-          // 杠上炮：杠后打出的牌，屁胡也能胡；固定 ×2 底金（不看第几杠）
+          // 杠上炮：杠后打出的牌，屁胡也能胡；番数加算 +2，只有杠链 / 亮倒才乘算
           gangPao: this.turnHadKong,
+          gangChainMul: this.gangChainMul(),
           // 亮倒的人打出的牌，屁胡也能胡
           fromLiangdao: this.players[fromSeat].liangdao
         });
@@ -746,6 +767,7 @@
         var dp = this.players[fromSeat].discards;
         dp.splice(dp.lastIndexOf(tile), 1);
         this.say(dq.cand.seat, '碰 ' + T.nameOf(tile), 'meld');
+        this.rec({ t: 'pong', seat: dq.cand.seat, tile: tile, from: fromSeat });
         this.emit('pong', { seat: dq.cand.seat, tile: tile, from: fromSeat });
         await sleep(this.speed * 0.4);
         return { type: 'pong', seat: dq.cand.seat };
@@ -755,6 +777,12 @@
   };
 
   /* ============================ 杠 ============================ */
+
+  /** 当前杠链的倍率（第 1 杠 1、第 2 杠 2 … 第 5 杠起封顶 16） */
+  Game.prototype.gangChainMul = function () {
+    if (!this.gangChain) return 1;
+    return Math.pow(2, Math.min(this.gangChain - 1, 4));
+  };
 
   /**
    * 执行杠并结算杠分
@@ -811,9 +839,11 @@
     }
 
     this.gangChain++;
-    var chainMul = Math.pow(2, this.gangChain - 1);
+    // 杠链翻倍：第 1 杠 ×1（不算杠上杠）、第 2 杠 ×2、……、第 5 杠 ×16 之后封顶不再翻倍
+    var chainMul = Math.pow(2, Math.min(this.gangChain - 1, 4));
     this.turnHadKong = true;
-    this.turnKongIndex = this.gangChain;   // 这是本链的第几杠（杠分按链递增；杠上炮固定 ×2）
+    this.turnKongIndex = this.gangChain;   // 这是本链的第几杠（杠分按链递增；杠上炮按杠链乘算）
+    var chainTxt = chainMul > 1 ? '（杠上杠 ×' + chainMul + '）' : '';
 
     if (this.rules.gangScore) {
       if (kind === 'zhigang') {
@@ -824,7 +854,7 @@
           seat: seat, kind: kind, tile: tile, per: amtZ, chain: chainMul, payers: [fromSeat]
         });
         this.pushLog(p.name + ' 直杠 ' + T.nameOf(tile) + '，' + this.players[fromSeat].name +
-          ' 付 ' + amtZ + '（杠上杠 ×' + chainMul + '）', 'score');
+          ' 付 ' + amtZ + chainTxt, 'score');
       } else {
         var per = (kind === 'ankong' ? base * 2 : base * 1) * chainMul;
         var payers = [];
@@ -838,9 +868,10 @@
           seat: seat, kind: kind, tile: tile, per: per, chain: chainMul, payers: payers
         });
         this.pushLog(p.name + ' ' + (kind === 'ankong' ? '暗杠' : '补杠(明杠)') + ' ' + T.nameOf(tile) +
-          '，每家 ' + per + '（杠上杠 ×' + chainMul + '）', 'score');
+          '，每家 ' + per + chainTxt, 'score');
       }
     }
+    this.rec({ t: kind === 'ankong' ? 'ankong' : (kind === 'zhigang' ? 'zhigang' : 'addkong'), seat: seat, tile: tile, from: (fromSeat === undefined ? null : fromSeat) });
     this.emit('kong', { seat: seat, tile: tile, kind: kind });
     await sleep(this.speed * 0.45);
     return false;
@@ -913,6 +944,10 @@
       this.say(w.seat, (selfDraw ? '自摸 ' : '胡牌 ') + T.nameOf(w.winTile) + ' —— ' +
         w.result.items.map(function (it) { return it.name + '×' + it.mult; }).join(' + ') +
         ' = ' + fan + ' 倍', 'win');
+      this.rec({
+        t: 'win', seat: w.seat, tile: w.winTile, selfDraw: !!selfDraw,
+        from: (w.fromSeat === undefined ? null : w.fromSeat), fan: fan
+      });
     }
 
     var winnerSeats = {};
@@ -987,6 +1022,7 @@
     }
 
     this.pushLog('荒庄（牌墙摸完，无人胡牌）—— 荒庄不荒杠，杠钱照算', 'hl');
+    this.rec({ t: 'huang' });
     // 荒庄也算「亮倒没赢」：该牌型的亮倒倾向下调
     this.learnFromLiangdao(function () { return false; });
     this.playing = false;

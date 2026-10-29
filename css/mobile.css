@@ -20,7 +20,33 @@ body.layout-mobile {
   overscroll-behavior: none;
   height: 100dvh;
   padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  overflow-x: hidden;               /* 手机版绝不允许左右滑 */
 }
+
+/* ---------- 开始界面：不再左右滑动、内容居中 ---------- */
+body.layout-mobile #start-screen {
+  padding: 8px; overflow-x: hidden; overflow-y: auto;
+  place-items: center;
+}
+body.layout-mobile .start-card {
+  width: 100%; max-width: 100%; box-sizing: border-box;
+  padding: 16px 14px 14px; border-radius: 16px;
+}
+body.layout-mobile .start-head { gap: 8px; flex-wrap: nowrap; }
+body.layout-mobile .start-head h1 { font-size: 19px; letter-spacing: 2px; }
+body.layout-mobile .logo.big { width: 38px; height: 38px; font-size: 22px; border-radius: 10px; }
+body.layout-mobile .start-sub { font-size: 11px; }
+body.layout-mobile .start-desc { font-size: 12px; line-height: 1.75; margin: 10px 0 4px; }
+body.layout-mobile .start-modes { gap: 6px; margin: 10px 0 4px; }
+body.layout-mobile .mode-card {
+  flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 10px; font-size: 11.5px; text-align: left;
+}
+body.layout-mobile .mode-card b { font-size: 14px; }
+body.layout-mobile .start-actions { gap: 6px; margin-top: 12px; }
+body.layout-mobile .start-actions .btn { flex: 1 1 44%; min-height: 42px; font-size: 14px; }
+body.layout-mobile .start-actions .btn.primary.big { flex: 1 1 100%; }
+body.layout-mobile .start-tip { font-size: 10.5px; margin-top: 10px; }
 
 /* ---------- 手机上一切尽量不换行 ---------- */
 body.layout-mobile .topbar,
@@ -355,6 +381,16 @@ body.layout-mobile.layout-portrait .seat-opp .row.discards { overflow: visible; 
 /* ============================================================
    触摸交互
    ============================================================ */
+/* 回放：手机上铺满、按钮加大、方框收紧 */
+body.layout-mobile .replay-host { padding: 0; align-items: stretch; }
+body.layout-mobile .replay-panel {
+  width: 100%; max-height: none; border-radius: 0; padding: 8px 8px calc(8px + var(--safe-b));
+}
+body.layout-mobile .replay-bar .btn { padding: 7px 10px; font-size: 12px; min-height: 34px; }
+body.layout-mobile .replay-turn { max-width: 46vw; }
+body.layout-mobile .rp-tile { width: 19px !important; height: 27px !important; }
+body.layout-mobile .replay-wall { max-height: 34vh; }
+
 body.layout-mobile .tile.picked {
   transform: translateY(-10px);
   box-shadow: 0 10px 18px rgba(0, 0, 0, .5), 0 0 0 2px rgba(232, 197, 106, .85);
