@@ -71,8 +71,8 @@
 
   var settings = {
     aiDifficulty: 'normal',
-    baseScore: 1,
-    cap: 8,
+    baseScore: 5,
+    cap: 0,
     pitHuOnlyZimo: true,
     liangdaoPitHuCanDianPao: true,
     liangdaoEnabled: true,

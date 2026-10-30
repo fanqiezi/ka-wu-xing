@@ -691,6 +691,9 @@ function boot(seed) {
     g.stop();
     await sleep(700);          // 等牌局里可能在跑的那一手彻底停下（避免它插进来重渲染）
     g.playing = false;
+    // 这个用例是手搓的结算数据（番数和 6 × 亮倒 2 = 12 倍），把底金临时按 1 算才对得上
+    const prevBase = g.rules.baseScore;
+    g.rules = Object.assign({}, g.rules, { baseScore: 1 });
     const T = win.KWX.Tiles;
     const hand = H('123456789t 111b 22b');
     const winTile = hand[hand.length - 1];
@@ -744,6 +747,7 @@ function boot(seed) {
     assert.ok(dom.hasClass(last, 'win-tile'), '赢张应排在整行的最右边');
     assert.ok(dom.hasClass(prev, 'gap'), '赢张前面应有一个空档');
     assert.strictEqual(T.nameOf(winTile), last.title.replace('本局赢张：', ''), '单列的应是本局赢张');
+    g.rules = Object.assign({}, g.rules, { baseScore: prevBase });
   });
 
   await atest('结算弹窗点外面不关，点「下一局」才关', async () => {
