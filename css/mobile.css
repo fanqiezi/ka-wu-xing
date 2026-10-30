@@ -18,7 +18,7 @@ body.layout-mobile {
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
   overscroll-behavior: none;
-  height: 100dvh;
+  height: calc(var(--vh) * 100);
   padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
   overflow-x: hidden;               /* 手机版绝不允许左右滑 */
 }
@@ -90,11 +90,11 @@ body.layout-mobile .seat-self .hand-row .tile {
   aspect-ratio: 100 / 140;       /* 牌面 viewBox 是 100x140，保持比例 */
 }
 body.layout-mobile.layout-portrait .seat-self .hand-row .tile {
-  width: min(50px, calc((100vw - 30px) / 7 - 1px));
+  width: min(50px, calc((calc(var(--vw) * 100) - 30px) / 7 - 1px));
   border-radius: 6px;
 }
 body.layout-mobile.layout-landscape .seat-self .hand-row .tile {
-  width: min(32px, calc((100vw - 230px) / 14 - 1px));
+  width: min(32px, calc((calc(var(--vw) * 100) - 230px) / 14 - 1px));
   border-radius: 5px;
   flex: 0 0 auto;
 }
@@ -108,11 +108,10 @@ body.layout-mobile .brand { gap: 5px; min-width: 0; }
 body.layout-mobile .brand .logo { width: 22px; height: 22px; font-size: 13px; border-radius: 6px; }
 body.layout-mobile .brand h1 { font-size: 12px; letter-spacing: 1px; }
 body.layout-mobile .brand .sub { display: none; }          /* 去掉第二行，顶部不换行 */
-/* 320 宽的小屏（iPhone SE1）：顶栏标题会顶到按钮上，只留红色「中」标 */
-@media (max-width: 358px) {
-  body.layout-mobile .brand h1 { display: none; }
-  body.layout-mobile .topbtns .btn { padding: 3px 5px; font-size: 10px; }
-}
+/* 320 宽的小屏（iPhone SE1）：顶栏标题会顶到按钮上，只留红色「中」标
+   —— 用 body.narrow（JS 按「渲染框宽度」加），这样旋屏时不会跟着物理宽度变 */
+body.layout-mobile.narrow .brand h1 { display: none; }
+body.layout-mobile.narrow .topbtns .btn { padding: 3px 5px; font-size: 10px; }
 body.layout-mobile .hud { display: flex; gap: 3px; margin-left: auto; flex-wrap: nowrap; }
 body.layout-mobile .hud-item { min-width: 0; padding: 1px 6px; border-radius: 6px; text-align: center; }
 body.layout-mobile .hud-item label { display: inline; font-size: 9px; letter-spacing: 0; margin-right: 2px; }
@@ -281,8 +280,8 @@ body.layout-mobile.layout-portrait .table {
   grid-template-rows: minmax(0, 1fr) auto auto;
 }
 body.layout-mobile.layout-portrait .opponents {
-  /* 中间那一竖条要放「四个方框 + 操作历史」，给它稍微宽一点（窄屏按 38vw 收） */
-  grid-template-columns: minmax(0, 1fr) min(148px, 38vw) minmax(0, 1fr); grid-row: 1;
+  /* 中间那一竖条要放「四个方框 + 操作历史」，给它稍微宽一点（窄屏按 38% 渲染宽度收） */
+  grid-template-columns: minmax(0, 1fr) min(148px, calc(var(--vw) * 38)) minmax(0, 1fr); grid-row: 1;
   align-items: start;                 /* 上家/下家 保持自己的内容高度，不跟着拉长 */
 }
 /* 中间那一竖条：四个方框 + 出牌提示 + 操作历史（操作历史吃掉下面的空白） */
@@ -366,17 +365,15 @@ body.layout-mobile.layout-portrait .seat-opp .row.waits,
 body.layout-mobile.layout-portrait .seat-opp .row.discards { overflow: visible; }
 
 /* 矮屏（如 iPhone SE1 320×568）：竖向实在不够，自己那块先收缩（副露+牌河可滚），
-   保证手牌、按钮、操作历史都完整且互不重叠 */
-@media (max-height: 660px) {
-  /* 自己那块限高（限高后里面的副露+牌河才会真的收缩滚动，手牌行不受影响） */
-  body.layout-mobile.layout-portrait .seat-self { max-height: 36dvh; }
-  body.layout-mobile.layout-portrait .seat-self > .seat-scroll {
-    flex: 0 1 auto; min-height: 40px; overflow-y: auto;
-  }
-  body.layout-mobile.layout-portrait .seat-self .row.discards .discards-list { max-height: 42px; }
-  body.layout-mobile.layout-portrait .actionbar { height: 48px; min-height: 48px; }
-  body.layout-mobile.layout-portrait .actionbar .act { min-height: 40px; font-size: 14px; }
+   保证手牌、按钮、操作历史都完整且互不重叠。
+   用 body.compact（JS 按「渲染框高度」加），旋屏时不会跟着物理高度变 */
+body.layout-mobile.compact.layout-portrait .seat-self { max-height: calc(var(--vh) * 36); }
+body.layout-mobile.compact.layout-portrait .seat-self > .seat-scroll {
+  flex: 0 1 auto; min-height: 40px; overflow-y: auto;
 }
+body.layout-mobile.compact.layout-portrait .seat-self .row.discards .discards-list { max-height: 42px; }
+body.layout-mobile.compact.layout-portrait .actionbar { height: 48px; min-height: 48px; }
+body.layout-mobile.compact.layout-portrait .actionbar .act { min-height: 40px; font-size: 14px; }
 
 /* ============================================================
    触摸交互
@@ -399,9 +396,16 @@ body.layout-mobile .rp-tile { width: 22px !important; height: 31px !important; }
 body.layout-mobile .rp-cut { margin-left: 5px; padding: 2px 6px; font-size: 10px; }
 body.layout-mobile .replay-bar { gap: 5px; }
 body.layout-mobile .replay-bar .btn { padding: 8px 11px; font-size: 13px; min-height: 38px; }
-body.layout-mobile .replay-turn { max-width: 52vw; font-size: 12px; padding: 8px; }
-body.layout-mobile .replay-wall { max-height: 30vh; }
+body.layout-mobile .replay-turn { max-width: calc(var(--vw) * 52); font-size: 12px; padding: 8px; }
+body.layout-mobile .replay-wall { max-height: calc(var(--vh) * 30); }
 body.layout-mobile .replay-wall-head { font-size: 12px; }
+
+/* 回放牌山：手机版两个方向都常显；横屏把它挪到面板最上方（不盖住标题和步数） */
+body.layout-mobile.layout-landscape .replay-wall {
+  order: -1; margin-bottom: 2px;
+  max-height: calc(var(--vh) * 34);
+  border-radius: 10px;
+}
 
 body.layout-mobile .tile.picked {
   transform: translateY(-10px);
@@ -444,7 +448,7 @@ body.layout-mobile .tile.picked {
 /* 弹窗：手机上做成底部抽屉（记录/设置/规则都是长内容，内部滚动） */
 body.layout-mobile .modal-host { align-items: flex-end; padding: 0; }
 body.layout-mobile .modal-host .modal {
-  width: 100%; max-width: none; max-height: 90dvh; overflow-y: auto;
+  width: 100%; max-width: none; max-height: calc(var(--vh) * 90); overflow-y: auto;
   border-radius: 16px 16px 0 0; border-bottom: 0;
   padding: 12px 12px calc(12px + var(--safe-b));
 }

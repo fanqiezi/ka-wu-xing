@@ -71,6 +71,7 @@
 
   var settings = {
     aiDifficulty: 'normal',
+    screenOrientation: 'auto',   // 手动旋屏的选择（auto / portrait / landscape），记住上次
     baseScore: 5,
     cap: 0,
     pitHuOnlyZimo: true,
@@ -153,8 +154,22 @@
       });
     }
 
-    // 手机版布局：开机时判定一次；之后**不再跟随重力感应自动切**，只能在这里手动转
-    applyLayout();
+    // 手机版布局：开机时判定一次；之后**不再跟随重力感应自动切**，只能手动转
+    // 上次手动选过取向就沿用（电脑版永远走 desktop）
+    var auto = detectLayoutMode();
+    var saved = settings.screenOrientation;
+    if (auto !== 'desktop' && (saved === 'portrait' || saved === 'landscape')) {
+      applyLayout(saved);
+    } else {
+      applyLayout(auto);
+    }
+
+    // 物理视口变化（含把手机转过来）：只更新「渲染尺寸 + 旋转角」，绝不自动换布局
+    if (window.addEventListener) {
+      window.addEventListener('resize', function () {
+        applyScreenBox();
+      });
+    }
 
     // 先停在开始界面，不自动开局
     showStartScreen();
@@ -411,6 +426,7 @@
     clearMobilePick();
     placeHud(layoutMode);
     placeExtras(layoutMode);
+    applyScreenBox();          // 锁渲染尺寸（必要时整体旋转）
     if (game) render();
     if (el.log) {
       el.log.scrollTop = keepLogTop;
@@ -419,13 +435,51 @@
     }
   }
 
-  /** 手动旋转屏幕：竖屏 ↔ 横屏（本作不再跟随重力感应自动旋转） */
+  /**
+   * 锁定渲染尺寸 + 需要时把画面整体转过去
+   *
+   * 关键点：布局只跟「用户选定的取向」走，**不跟重力感应走**。
+   *  - 渲染框的宽高 = 选定取向下的像素尺寸（竖屏取 min/max，横屏取 max/min）
+   *  - CSS 里所有 vh/vw 都换成了 --vh/--vw（= 渲染框的 1%），所以画面不会因为物理旋转而重排
+   *  - 物理方向与选定取向不一致时，给 body 加 .rot-90/.rot-270 把画面转过去（真·旋屏）
+   */
+  function applyScreenBox() {
+    var w = window.innerWidth || 360;
+    var h = window.innerHeight || 640;
+    var root = document.documentElement;
+    var body = document.body;
+    if (!root || !root.style || !body || !body.classList) return;
+
+    var rw, rh;
+    if (layoutMode === 'landscape') { rw = Math.max(w, h); rh = Math.min(w, h); }
+    else if (layoutMode === 'portrait') { rw = Math.min(w, h); rh = Math.max(w, h); }
+    else { rw = w; rh = h; }
+
+    root.style.setProperty('--screen-w', rw + 'px');
+    root.style.setProperty('--screen-h', rh + 'px');
+    root.style.setProperty('--vh', (rh / 100) + 'px');
+    root.style.setProperty('--vw', (rw / 100) + 'px');
+
+    body.classList.toggle('narrow', rw <= 358);       // 窄屏顶栏（按渲染宽度，不按物理宽度）
+    body.classList.toggle('compact', rh <= 660);      // 矮屏收缩（按渲染高度）
+
+    body.classList.remove('rotation-locked', 'rot-90', 'rot-270');
+    if (layoutMode === 'desktop') return;
+    if (w === rw) return;                              // 物理方向已经对上了，不用转
+    body.classList.add('rotation-locked');
+    // 物理竖屏但选了横屏 → 顺时针 90°；物理横屏但选了竖屏 → 逆时针
+    body.classList.add(h >= w ? 'rot-90' : 'rot-270');
+  }
+
+  /** 手动旋转屏幕：竖屏 ↔ 横屏（按钮改的是「选定取向」，不再跟随重力感应自动旋转） */
   function rotateLayout() {
     if (layoutMode === 'desktop') {
       toast('电脑版不用旋转');
       return layoutMode;
     }
     var next = layoutMode === 'portrait' ? 'landscape' : 'portrait';
+    settings.screenOrientation = next;      // 记住这个取向，下次打开还是它
+    saveSettings();
     applyLayout(next);
     toast(next === 'portrait' ? '已切到竖屏' : '已切到横屏');
     return next;
@@ -1564,10 +1618,6 @@
     if (!host) return;
     if (!host.dataset.built) {
       host.dataset.built = '1';
-      // 电脑端不用「按住」：牌山常显，所以不放这个按钮
-      var wallBtn = isMobileLayout()
-        ? '<button class="btn tiny" data-rp="wall">牌山（按住）</button>'
-        : '';
       host.innerHTML =
         '<div class="replay-panel">' +
         '  <div class="replay-head"><span id="replay-title">回放</span>' +
@@ -1580,7 +1630,6 @@
         '    <button class="btn primary" data-rp="play" id="replay-play">播放</button>' +
         '    <button class="btn" data-rp="next">下一步</button>' +
         '    <button class="btn" data-rp="speed" id="replay-speed">慢速 3s</button>' +
-        wallBtn +
         '    <select id="replay-turn" class="replay-turn"></select>' +
         '  </div>' +
         '</div>';
@@ -1596,14 +1645,7 @@
           }
         }
       });
-      // 牌山：按住看，松手收起
-      host.addEventListener('pointerdown', function (e) {
-        var b = e.target && e.target.closest ? e.target.closest('[data-rp="wall"]') : null;
-        if (b) { if (e.preventDefault) e.preventDefault(); showReplayWall(true); }
-      });
-      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
-        host.addEventListener(ev, function () { showReplayWall(false); });
-      });
+      // 牌山现在是常显的（手机竖屏 / 横屏都常显），不再需要「按住」交互
       host.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'replay-turn') {
           var step = parseInt(e.target.value, 10);
@@ -1697,8 +1739,8 @@
     var sel = $('replay-turn');
     if (sel) sel.value = String(replayCurrentTurn());
     if (replay.playing) scrollReplayToBottom();
-    // 电脑端牌山常显（每次刷新都跟着当前步更新）；手机版只在按住时显示
-    showReplayWall(false);
+    // 牌山常显（跟随当前步刷新）
+    showReplayWall();
   }
 
   function scrollReplayToBottom() {
@@ -1708,15 +1750,13 @@
   }
 
   /**
-   * 牌山：手机版「按住才显示」，电脑版**常显**（不用按）。
-   * @param {boolean} on 手机版是否按住
+   * 牌山：**所有平台都常显**（跟随当前步刷新）。
+   * 手机上竖屏在面板底部；横屏由 CSS 抬到面板顶部（像弹出层）。
    */
-  function showReplayWall(on) {
+  function showReplayWall() {
     var box = $('replay-wall');
     if (!box) return;
     if (!replay) { box.hidden = true; box.innerHTML = ''; return; }
-    var always = !isMobileLayout();          // 电脑端直接显示
-    if (!always && !on) { box.hidden = true; box.innerHTML = ''; return; }
     var f = replay.frames[replay.idx];
     var wall = replay.rep.wall || [];
     var left = Math.max(0, wall.length - f.drawn);

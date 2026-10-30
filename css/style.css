@@ -472,6 +472,47 @@ button { font-family: inherit; }
 }
 .replay-wall-head { font-size: 14px; color: var(--gold); margin-bottom: 8px; }
 
+/* ------------------------------ 全局：禁止选中/长按菜单 ------------------------------ */
+/* 手机上长按手牌/按钮不该弹出「选择/拷贝」菜单，也不该把文字选蓝 */
+html, body, #app, #modal-host, #replay-host, #start-screen, #topbar,
+button, .btn, .tile, .act, .tag, table, th, td, div, span, p, li, h1, h2, h3 {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html, body {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+/* 需要能选的地方（比如以后加输入框）单独放开 */
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ------------------------------ 屏幕取向锁定 ------------------------------ */
+/*
+ * 玩法：布局只跟「用户选的取向」走，不跟重力感应走。
+ * JS 把渲染尺寸写进 --screen-w/--screen-h（= 选定取向的像素尺寸），
+ * 物理屏幕方向不一致时给 body 加 .rot-90 / .rot-270 把画面整体转过去。
+ */
+:root {
+  --screen-w: 100vw;
+  --screen-h: 100dvh;
+  --vh: 1dvh;     /* 渲染框高度的 1%（CSS 里用 calc(var(--vh) * N) 代替 Nvh） */
+  --vw: 1vw;      /* 渲染框宽度的 1% */
+}
+body.rotation-locked {
+  position: fixed; top: 0; left: 0;
+  width: var(--screen-w); height: var(--screen-h);
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+body.rot-90 { transform: translateX(100vw) rotate(90deg); }
+body.rot-270 { transform: translateY(100vh) rotate(-90deg); }
+
 /* ------------------------------ 响应式 ------------------------------ */
 @media (max-width: 1080px) {
   #app { grid-template-columns: 1fr; }
