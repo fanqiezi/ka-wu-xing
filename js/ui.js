@@ -1495,6 +1495,7 @@
   /* ------------------------------------------------------------------ */
 
   var replay = null;   // { round, rep, frames, turns, idx, playing, speed, timer }
+  var wallHold = false;  // 横屏「按住看牌山」是否正按着
 
   function addTileTo(list, t) {
     list.push(t);
@@ -1630,6 +1631,7 @@
         '    <button class="btn primary" data-rp="play" id="replay-play">播放</button>' +
         '    <button class="btn" data-rp="next">下一步</button>' +
         '    <button class="btn" data-rp="speed" id="replay-speed">慢速 3s</button>' +
+        '    <button class="btn" data-rp="wall" id="replay-wall-btn">牌山（按住）</button>' +
         '    <select id="replay-turn" class="replay-turn"></select>' +
         '  </div>' +
         '</div>';
@@ -1645,7 +1647,21 @@
           }
         }
       });
-      // 牌山现在是常显的（手机竖屏 / 横屏都常显），不再需要「按住」交互
+      // 牌山：横屏按住看（弹窗在面板上方，手指挡不到）；竖屏/电脑端常显
+      host.addEventListener('pointerdown', function (e) {
+        var b = e.target && e.target.closest ? e.target.closest('[data-rp="wall"]') : null;
+        if (!b) return;
+        if (e.preventDefault) e.preventDefault();
+        wallHold = true;
+        showReplayWall(true);
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+        host.addEventListener(ev, function () {
+          if (!wallHold) return;
+          wallHold = false;
+          showReplayWall(false);
+        });
+      });
       host.addEventListener('change', function (e) {
         if (e.target && e.target.id === 'replay-turn') {
           var step = parseInt(e.target.value, 10);
@@ -1664,6 +1680,7 @@
   function closeReplay() {
     if (replay) clearTimeout(replay.timer);
     replay = null;
+    wallHold = false;
     var host = $('replay-host');
     if (host) {
       host.hidden = true;
@@ -1739,8 +1756,8 @@
     var sel = $('replay-turn');
     if (sel) sel.value = String(replayCurrentTurn());
     if (replay.playing) scrollReplayToBottom();
-    // 牌山常显（跟随当前步刷新）
-    showReplayWall();
+    // 牌山：竖屏/电脑常显；横屏按着才显示
+    showReplayWall(wallHold);
   }
 
   function scrollReplayToBottom() {
@@ -1750,13 +1767,15 @@
   }
 
   /**
-   * 牌山：**所有平台都常显**（跟随当前步刷新）。
-   * 手机上竖屏在面板底部；横屏由 CSS 抬到面板顶部（像弹出层）。
+   * 牌山：竖屏 / 电脑端**常显**；手机横屏是「按住看的弹窗」，而且弹窗在面板**上方**（手指挡不到）。
+   * @param {boolean} [on] 横屏时是否正按着
    */
-  function showReplayWall() {
+  function showReplayWall(on) {
     var box = $('replay-wall');
     if (!box) return;
     if (!replay) { box.hidden = true; box.innerHTML = ''; return; }
+    var holdMode = layoutMode === 'landscape';      // 只有横屏用「按住」
+    if (holdMode && !on) { box.hidden = true; box.innerHTML = ''; return; }
     var f = replay.frames[replay.idx];
     var wall = replay.rep.wall || [];
     var left = Math.max(0, wall.length - f.drawn);

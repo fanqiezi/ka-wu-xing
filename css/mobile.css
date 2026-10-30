@@ -400,11 +400,16 @@ body.layout-mobile .replay-turn { max-width: calc(var(--vw) * 52); font-size: 12
 body.layout-mobile .replay-wall { max-height: calc(var(--vh) * 30); }
 body.layout-mobile .replay-wall-head { font-size: 12px; }
 
-/* 回放牌山：手机版两个方向都常显；横屏把它挪到面板最上方（不盖住标题和步数） */
+/* 回放牌山按钮：只有「手机横屏」才需要（竖屏/电脑是常显的） */
+body.layout-mobile.layout-portrait #replay-wall-btn,
+body:not(.layout-mobile) #replay-wall-btn { display: none; }
+
+/* 回放牌山：竖屏常显（面板底部）；横屏是「按住看的弹窗」，弹窗固定**上方**（手指挡不到） */
 body.layout-mobile.layout-landscape .replay-wall {
-  order: -1; margin-bottom: 2px;
-  max-height: calc(var(--vh) * 34);
-  border-radius: 10px;
+  position: absolute; left: 8px; right: 8px; top: 52px; z-index: 6;
+  max-height: calc(var(--vh) * 46);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .62);
 }
 
 body.layout-mobile .tile.picked {
