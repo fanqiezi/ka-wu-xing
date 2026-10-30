@@ -1052,6 +1052,58 @@ function boot(seed) {
     assert.strictEqual(ui.getLayout(), 'portrait', 'resize / orientationchange 不该自己切布局');
   });
 
+  await atest('回放：反复进出不会把「下一步」的监听器叠加（点一次只走一步）', async () => {
+    const ui = win.KWX_UI;
+    const g = ui.getGame();
+    if (g) g.stop();
+    // 找一局带回放数据的
+    let round = null;
+    (g ? g.history : []).forEach(h => {
+      if (h.replay && h.replay.events && h.replay.events.length) round = h.round;
+    });
+    if (round === null) {
+      // 没有就现打一局（全 AI）
+      if (g) {
+        g.players.forEach(p => { p.isAI = true; });
+        await g.startRound();
+      }
+      (g.history || []).forEach(h => {
+        if (h.replay && h.replay.events && h.replay.events.length) round = h.round;
+      });
+    }
+    assert.ok(round !== null, '应该有可回放的局');
+
+    const openAndClick = () => {
+      ui.openReplay(round);
+      assert.strictEqual(ui.getReplay().idx, 0, '刚打开应该在开头');
+      const panel = dom.byId['replay-panel'];
+      assert.ok(panel, '应该有回放面板');
+      panel.click();                       // 点面板空白处 = 下一步
+      const idx = ui.getReplay().idx;
+      ui.closeReplay();
+      return idx;
+    };
+
+    const first = openAndClick();
+    assert.strictEqual(first, 1, '第一次点应该只前进 1 步，实际 ' + first);
+    const second = openAndClick();
+    assert.strictEqual(second, 1, '重进回放后再点，仍应只前进 1 步，实际 ' + second);
+    const third = openAndClick();
+    assert.strictEqual(third, 1, '第三次进出后仍应只走 1 步，实际 ' + third);
+
+    // 上一步同理：进回放 → 下一步 → 上一步，应该回到 0
+    ui.openReplay(round);
+    dom.byId['replay-panel'].click();
+    const next = ui.getReplay().idx;
+    dom.byId['replay-panel'] && ui.closeReplay();
+    ui.openReplay(round);
+    dom.byId['replay-panel'].click();
+    const again = ui.getReplay().idx;
+    assert.strictEqual(next, 1);
+    assert.strictEqual(again, 1, '重进后点一次还是 1 步，实际 ' + again);
+    ui.closeReplay();
+  });
+
   await atest('成长型：对局记录里能看到「成长档案」，并且能一键清空', async () => {
     const ui = win.KWX_UI;
     const mem = ui.getMemory();

@@ -6,7 +6,7 @@
 湖北三人麻将「卡五星」（随州/襄阳一带玩法）的离线单机版：**你 + 两个电脑**，纯静态网页，双击即玩。
 
 * 🌐 **在线试玩 / 装到桌面**：<https://fanqiezi.github.io/ka-wu-xing/> （手机浏览器打开会自动切手机版布局；「添加到主屏幕」就是个全屏 app，断网也能玩）
-* 📦 **仓库**：<https://github.com/fanqiezi/ka-wu-xing> · 发布包：[v1.4.2](https://github.com/fanqiezi/ka-wu-xing/releases/tag/v1.4.2)
+* 📦 **仓库**：<https://github.com/fanqiezi/ka-wu-xing> · 发布包：[v1.4.3](https://github.com/fanqiezi/ka-wu-xing/releases/tag/v1.4.3)
 
 ![对局界面](screenshots/game.png)
 
@@ -338,7 +338,7 @@ ka-wu-xing/
 ├─ tests/
 │  ├─ rules.test.js      规则引擎自测（42 项）
 │  ├─ game.test.js       牌局引擎 + 全自动对局模拟 + 记录统计（63 项）
-│  ├─ ui.test.js         界面联调：打桩 DOM 里真跑 ui.js（46 项，含手机版布局/触摸/回放/计划/旋转）
+│  ├─ ui.test.js         界面联调：打桩 DOM 里真跑 ui.js（47 项，含手机版布局/触摸/回放/计划/旋转）
 │  ├─ memory.test.js     成长型记忆 / 对手模型（12 项）
 │  ├─ tune-liangdao.js   亮倒模型标定脚本（开发用）
 │  ├─ shots-real.js      真实游戏在 390×844 / 844×390 / 1280×800 下截图 + 自检

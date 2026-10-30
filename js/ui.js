@@ -1617,58 +1617,57 @@
 
     var host = $('replay-host');
     if (!host) return;
-    if (!host.dataset.built) {
-      host.dataset.built = '1';
-      host.innerHTML =
-        '<div class="replay-panel">' +
-        '  <div class="replay-head"><span id="replay-title">回放</span>' +
-        '    <button class="btn ghost" data-rp="exit">退出</button></div>' +
-        '  <div class="replay-status"><span id="replay-step"></span><span id="replay-text"></span></div>' +
-        '  <div class="replay-body" id="replay-body"></div>' +
-        '  <div class="replay-wall" id="replay-wall" hidden></div>' +
-        '  <div class="replay-bar">' +
-        '    <button class="btn" data-rp="prev">上一步</button>' +
-        '    <button class="btn primary" data-rp="play" id="replay-play">播放</button>' +
-        '    <button class="btn" data-rp="next">下一步</button>' +
-        '    <button class="btn" data-rp="speed" id="replay-speed">慢速 3s</button>' +
-        '    <button class="btn" data-rp="wall" id="replay-wall-btn">牌山（按住）</button>' +
-        '    <select id="replay-turn" class="replay-turn"></select>' +
-        '  </div>' +
-        '</div>';
+    // 每次都重建面板并把事件绑在「新面板」上 —— 反复进出回放不会把监听器叠加起来
+    // （之前绑定挂在 host 上，重进一次就多一份，点上一步/下一步会一次走多步）
+    host.innerHTML =
+      '<div class="replay-panel" id="replay-panel">' +
+      '  <div class="replay-head"><span id="replay-title">回放</span>' +
+      '    <button class="btn ghost" data-rp="exit">退出</button></div>' +
+      '  <div class="replay-status"><span id="replay-step"></span><span id="replay-text"></span></div>' +
+      '  <div class="replay-body" id="replay-body"></div>' +
+      '  <div class="replay-wall" id="replay-wall" hidden></div>' +
+      '  <div class="replay-bar">' +
+      '    <button class="btn" data-rp="prev">上一步</button>' +
+      '    <button class="btn primary" data-rp="play" id="replay-play">播放</button>' +
+      '    <button class="btn" data-rp="next">下一步</button>' +
+      '    <button class="btn" data-rp="speed" id="replay-speed">慢速 3s</button>' +
+      '    <button class="btn" data-rp="wall" id="replay-wall-btn">牌山（按住）</button>' +
+      '    <select id="replay-turn" class="replay-turn"></select>' +
+      '  </div>' +
+      '</div>';
 
-      host.addEventListener('click', function (e) {
-        var act = e.target && e.target.closest ? e.target.closest('[data-rp]') : null;
-        if (act) { replayAction(act.dataset.rp); return; }
-        // 暂停状态下点空白处 = 下一步
-        if (replay && !replay.playing) {
-          var t = e.target;
-          if (t === host || (t.classList && (t.classList.contains('replay-body') || t.classList.contains('replay-panel')))) {
-            replayGo(replay.idx + 1);
-          }
-        }
+    var panel = $('replay-panel');
+    panel.addEventListener('click', function (e) {
+      var act = e.target && e.target.closest ? e.target.closest('[data-rp]') : null;
+      if (act) { replayAction(act.dataset.rp); return; }
+      // 暂停状态下点空白处 = 下一步
+      if (!replay || replay.playing) return;
+      var t = e.target;
+      if (t === panel || (t.classList && t.classList.contains('replay-body'))) {
+        replayGo(replay.idx + 1);
+      }
+    });
+    // 牌山：横屏按住看（弹窗在面板上方，手指挡不到）；竖屏/电脑端常显
+    panel.addEventListener('pointerdown', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-rp="wall"]') : null;
+      if (!b) return;
+      if (e.preventDefault) e.preventDefault();
+      wallHold = true;
+      showReplayWall(true);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+      panel.addEventListener(ev, function () {
+        if (!wallHold) return;
+        wallHold = false;
+        showReplayWall(false);
       });
-      // 牌山：横屏按住看（弹窗在面板上方，手指挡不到）；竖屏/电脑端常显
-      host.addEventListener('pointerdown', function (e) {
-        var b = e.target && e.target.closest ? e.target.closest('[data-rp="wall"]') : null;
-        if (!b) return;
-        if (e.preventDefault) e.preventDefault();
-        wallHold = true;
-        showReplayWall(true);
-      });
-      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
-        host.addEventListener(ev, function () {
-          if (!wallHold) return;
-          wallHold = false;
-          showReplayWall(false);
-        });
-      });
-      host.addEventListener('change', function (e) {
-        if (e.target && e.target.id === 'replay-turn') {
-          var step = parseInt(e.target.value, 10);
-          if (!isNaN(step)) { replayPause(); replayGo(step); }
-        }
-      });
-    }
+    });
+    panel.addEventListener('change', function (e) {
+      if (e.target && e.target.id === 'replay-turn') {
+        var step = parseInt(e.target.value, 10);
+        if (!isNaN(step)) { replayPause(); replayGo(step); }
+      }
+    });
     host.hidden = false;
     var title = $('replay-title');
     if (title) title.textContent = '第 ' + roundNo + ' 局回放（明牌）';
@@ -1684,8 +1683,8 @@
     var host = $('replay-host');
     if (host) {
       host.hidden = true;
-      host.innerHTML = '';
-      delete host.dataset.built;    // 下次打开要重新搭界面
+      host.innerHTML = '';          // 面板连同它自己的监听器一起丢掉，下次重建
+      delete host.dataset.built;
     }
   }
 
