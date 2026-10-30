@@ -456,6 +456,8 @@ button { font-family: inherit; }
 }
 .rp-cut.tsumo { background: rgba(140, 190, 255, .22); color: #cfe4ff; }
 .rp-cut.te { background: rgba(232, 197, 106, .3); color: #ffe6a8; }
+/* 做牌计划标签（回放里看 AI 当时在做哪个番） */
+.tag.plan { background: rgba(150, 120, 255, .26); color: #ddd0ff; }
 .replay-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 6px; }
 .replay-bar .btn { padding: 9px 18px; font-size: 15px; border-radius: 10px; }
 .replay-turn {

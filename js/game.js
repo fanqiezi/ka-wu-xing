@@ -71,6 +71,10 @@
     // 「成长型」的记忆（由 UI 从 localStorage 读出来传进来；不传就是空记忆）
     this.aiMemory = options.memory || (Memory ? Memory.blank() : null);
     this._humanModel = Memory ? Memory.profile(this.aiMemory) : null;
+    // 做牌计划（按座位一份状态；aiPlans 是状态机，aiPlanNow 是当前目标番型名，aiPlanLog 是事件流水）
+    this.aiPlans = [null, null, null];
+    this.aiPlanNow = [null, null, null];
+    this.aiPlanLog = [];
     // 电脑的「亮倒奖惩记忆」：每个座位一套，按牌型记「亮倒后赢了/输了」的倾向
     this.liangdaoLearn = [0, 1, 2].map(function () { return AI.newLearnTable(); });
     this.playing = false;
@@ -196,6 +200,7 @@
       rules: this.rules,
       diff: (this.aiDifficultyBySeat && this.aiDifficultyBySeat[seat]) || this.aiDifficulty,
       gangChain: this.gangChain,                 // 杠链（杠分收益要用）
+      planState: this.aiPlans[seat],             // 做牌计划的状态机（按座位一份，每局重置）
       humanModel: AI.profileOf((this.aiDifficultyBySeat && this.aiDifficultyBySeat[seat]) || this.aiDifficulty).learn
         ? this._humanModel : null,               // 「成长型」才带对手画像
       liangdaoLearn: this.liangdaoLearn[seat],   // 该座位的亮倒奖惩记忆
@@ -363,6 +368,9 @@
       p.lastDraw = null;
       p.tsumogiriCount = 0;      // 本局摸切了几张（成长型记忆要用）
     });
+    // 做牌计划：每局重新来过（上一局的计划不带到这一局）
+    this.aiPlans = [null, null, null];
+    this.aiPlanNow = [null, null, null];
     // 每人 13 张
     for (var k = 0; k < 13; k++) {
       for (var s = 0; s < 3; s++) {
@@ -680,6 +688,22 @@
     if (p.isAI) {
       var view = this.viewFor(seat);
       view.allowed = allowed;
+      // 做牌计划：每巡先更新一次（立目标 / 放弃 / 重新捡起来），再按计划留牌
+      if (AI.profileOf(view.diff).plan) {
+        var pr = AI.updatePlan(view);
+        this.aiPlans[seat] = pr.state;
+        this.aiPlanNow[seat] = pr.plan ? pr.plan.name : null;
+        if (pr.events && pr.events.length) {
+          var self2 = this;
+          pr.events.forEach(function (ev) {
+            self2.aiPlanLog.push({
+              seat: seat, round: self2.roundNo, type: ev.type,
+              key: ev.key, name: ev.name, why: ev.why
+            });
+          });
+        }
+        view.plan = pr.plan;
+      }
       tile = AI.chooseDiscard(view);
       if (allowed.indexOf(tile) < 0) tile = allowed[0];
       await sleep(this.speed);
@@ -706,7 +730,10 @@
     if (p.liangdao) p.liangdaoReveal = R.revealTiles(p.hand, p.melds);
     p.discards.push(tile);
     this.lastDiscard = { tile: tile, seat: seat, tsumogiri: tsumogiri };
-    this.rec({ t: 'discard', seat: seat, tile: tile, tsumogiri: tsumogiri });
+    this.rec({
+      t: 'discard', seat: seat, tile: tile, tsumogiri: tsumogiri,
+      plan: this.aiPlanNow[seat] || null        // 回放里展示「当时在做哪个番」
+    });
     this.emit('discard', { seat: seat, tile: tile, tsumogiri: tsumogiri });
     this.pushLog(p.name + (tsumogiri ? ' 摸切 ' : ' 手切 ') + T.nameOf(tile));
     return tile;

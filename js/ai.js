@@ -63,6 +63,15 @@
     kongWaitTol: 0.35,      // 同向听时，听口最多缩水多少
     mixBand: 0,             // 亮倒临界混合带（±比例），0 = 不用混合策略
     mixProb: 0.35,          // 带内选择不亮的概率
+    // ---- 做牌计划层（困难/成长档）----
+    plan: false,            // 是否启用计划层
+    planEnter: 1.6,         // 开计划的门槛（单位：番）
+    planExit: 0.7,          // 放弃门槛（迟滞，比 planEnter 低）
+    planStallLimit: 3,      // 连续几巡没进展就休眠
+    planDormantGap: 0.15,   // 休眠后要恢复到「比放弃时好这么多」才重新捡起来
+    planCostPerTurn: 1.1,   // 每牺牲一巡牌效值几番
+    planAbandonThreat: 1.55,// 对手威胁超过这个就放弃追番
+    planBiasW: 110,         // 计划对打牌评分的偏置强度
     learn: false            // 是否启用「学人类」的记忆（P3）
   };
 
@@ -93,7 +102,9 @@
       dangerHigh: 0.85,
       dangerLow: 0.25,
       kongTradeoff: true,
-      mixBand: 0.10
+      mixBand: 0.10,
+      plan: true,                 // 做牌计划层：会立目标番型、也会放弃和重新捡起来
+      planBiasW: 70               // 计划对留牌的偏置（先给保守值：强度越大牌效损失越多）
     }),
     // 成长型：困难 + 记忆（记忆内容在 P3 落地，这里先把开关和档位准备好）
     growth: Object.assign({}, NORMAL_PROFILE, {
@@ -118,6 +129,8 @@
       dangerLow: 0.25,
       kongTradeoff: true,
       mixBand: 0.12,
+      plan: true,
+      planBiasW: 80,
       learn: true
     })
   };
@@ -336,6 +349,291 @@
     };
   }
 
+  /* ------------------------------------------------------------------ *
+   * 做牌计划层（困难 / 成长档）
+   *
+   * 人类不是「给番型加个分」，而是：起手读结构 → 立一个目标番型 →
+   * 每巡看进张 / 对手弃牌 / 牌山余量 / 威胁 → 该弃就弃、条件回来再捡起来。
+   *
+   * 这里把这件事落成一个小状态机（状态存在 Game 里，按座位一份）：
+   *   state = { key, name, at, progress, stall, dormant: {key: {progress, at}} }
+   *
+   * 每巡：① 给每个候选番型算 ready（离做成多近）和 cost（要牺牲几巡牌效）
+   *       ② ev = 番数 × ready − cost × planCostPerTurn（单位：番）
+   *       ③ 迟滞：进入要 ev ≥ planEnter、退出要 ev < planExit（防摇摆）
+   *       ④ 连续 planStallLimit 巡没进展 / 威胁太大 → 休眠（不是删除）
+   *       ⑤ 休眠的番型，progress 涨回来 ≥ dormantGap → 允许重新激活
+   * ------------------------------------------------------------------ */
+
+  var PLAN_DEFS = [
+    { key: 'qingyise', name: '清一色', fan: 4 },
+    { key: 'qidui', name: '七对', fan: 4 },
+    { key: 'longqidui', name: '龙七对', fan: 8 },
+    { key: 'pengpeng', name: '碰碰胡', fan: 2 },
+    { key: 'dasanyuan', name: '大三元', fan: 8 },
+    { key: 'xiaosanyuan', name: '小三元', fan: 4 },
+    { key: 'sigui', name: '四归一', fan: 2 },
+    { key: 'shouzhuayi', name: '手抓一', fan: 4 }
+  ];
+
+  var DRAGONS = [18, 19, 20];   // 中 / 发 / 白
+
+  function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  /** 手牌 + 副露的统计（计划评估用，O(21)） */
+  function handStats(hand, melds) {
+    var counts = T.countsOf(hand);
+    var per = [0, 0, 0], honors = 0, pairs = 0, triplets = 0, quads = 0, singles = 0;
+    var dragonTriplets = 0, dragonPairs = 0, dragonCount = 0;
+    for (var t = 0; t < TT; t++) {
+      var c = counts[t];
+      if (!c) continue;
+      if (T.isHonor(t)) {
+        honors += c;
+        if (DRAGONS.indexOf(t) >= 0) dragonCount += c;
+      } else per[T.suitOf(t)] += c;
+      if (c === 1) singles++;
+      if (c === 2) pairs++;
+      if (c >= 3) triplets++;
+      if (c >= 4) quads++;
+    }
+    (melds || []).forEach(function (m) {
+      if (T.isHonor(m.tile)) {
+        honors += 3;
+        if (DRAGONS.indexOf(m.tile) >= 0) dragonCount += 3;
+      } else per[T.suitOf(m.tile)] += 3;
+      if (m.kind === 'pong') { triplets++; pairs += 0; }
+      else { triplets++; quads += 0; }
+    });
+    // 字牌里的三元统计要单独算（副露里碰的中发白也算刻子）
+    DRAGONS.forEach(function (d) {
+      var inHand = counts[d] || 0;
+      var ponged = (melds || []).some(function (m) { return m.tile === d && (m.kind === 'pong' || m.kind === 'mingkong' || m.kind === 'ankong' || m.kind === 'zhigang'); });
+      if (ponged || inHand >= 3) dragonTriplets++;
+      else if (inHand === 2) dragonPairs++;
+    });
+    var total = hand.length + (melds || []).reduce(function (s, m) { return s + (m.kind === 'pong' ? 3 : 4); }, 0);
+    return {
+      counts: counts, per: per, honors: honors, pairs: pairs, triplets: triplets,
+      quads: quads, singles: singles, total: total,
+      dragonTriplets: dragonTriplets, dragonPairs: dragonPairs, dragonCount: dragonCount,
+      maxSuit: Math.max(per[0], per[1], per[2])
+    };
+  }
+
+  /** 「四归一」进度：手上已有三张同牌（再来一张就是暗四归一），或已碰 + 手上还有一张 */
+  function siguiProgress(hand, melds, counts) {
+    var best = 0;
+    for (var t = 0; t < TT; t++) {
+      if (counts[t] >= 3) best = Math.max(best, 0.85);
+      else if (counts[t] >= 1 && (melds || []).some(function (m) {
+        return m.tile === t && (m.kind === 'pong' || m.kind === 'mingkong');
+      })) best = Math.max(best, 0.7);
+    }
+    return best;
+  }
+
+  /**
+   * 给每个番型算「离做成多近 / 要牺牲多少」
+   * @returns {Array<{key,name,fan,ready,cost,infeasible}>}
+   */
+  function planCandidates(view) {
+    var hand = view.hand;
+    var melds = view.melds || [];
+    var st = handStats(hand, melds);
+    var total = Math.max(1, st.total);
+    var out = [];
+
+    // 清一色：同门张数越多越近；字牌是减分项（字牌只能当将/刻子，凑不进清一色）
+    var qingReady = clamp01((st.maxSuit - 8) / 4) * (1 - Math.min(0.5, st.honors * 0.12));
+    out.push({
+      key: 'qingyise', name: '清一色', fan: 4,
+      ready: qingReady, cost: Math.max(0, total - st.maxSuit) / 2,
+      infeasible: (total - st.maxSuit) > 5
+    });
+
+    // 七对 / 龙七对：不能有副露；对子越多越近（4 对 0.4、5 对 0.6、6 对 0.8、7 对 1.0）
+    var noMelds = melds.length === 0;
+    var pairsReady = clamp01((st.pairs - 2) / 5);
+    out.push({
+      key: 'qidui', name: '七对', fan: 4,
+      ready: noMelds ? pairsReady : 0, cost: Math.max(0, 7 - st.pairs) / 2,
+      infeasible: !noMelds || st.pairs < 4
+    });
+    if (noMelds) {
+      out.push({
+        key: 'longqidui', name: '龙七对', fan: 8,
+        ready: st.quads > 0 ? clamp01((st.pairs - 2) / 5) : 0,
+        cost: Math.max(0, 7 - st.pairs) / 2,
+        infeasible: st.quads === 0 || st.pairs < 5
+      });
+    }
+
+    // 碰碰胡：刻子 + 对子多、顺子少
+    var pengReady = clamp01((st.triplets + st.pairs * 0.5 - 1) / 3);
+    out.push({
+      key: 'pengpeng', name: '碰碰胡', fan: 2,
+      ready: pengReady, cost: Math.max(0, 4 - st.triplets - st.pairs * 0.5) / 2,
+      infeasible: pengReady <= 0.01
+    });
+
+    // 大三元 / 小三元：三元牌刻子/对子
+    var bigReady = clamp01((st.dragonTriplets - 1) / 2);
+    var smallReady = clamp01((st.dragonTriplets + st.dragonPairs * 0.6 - 1) / 2);
+    out.push({
+      key: 'dasanyuan', name: '大三元', fan: 8,
+      ready: bigReady, cost: Math.max(0, 3 - st.dragonTriplets) * 0.9,
+      infeasible: st.dragonTriplets < 1
+    });
+    out.push({
+      key: 'xiaosanyuan', name: '小三元', fan: 4,
+      ready: smallReady, cost: Math.max(0, 3 - st.dragonTriplets - st.dragonPairs) * 0.8,
+      infeasible: st.dragonTriplets + st.dragonPairs < 2
+    });
+
+    // 四归一 / 手抓一（都是顺带的，权重低）
+    out.push({
+      key: 'sigui', name: '四归一', fan: 2,
+      ready: siguiProgress(hand, melds, st.counts), cost: 0.4,
+      infeasible: siguiProgress(hand, melds, st.counts) <= 0
+    });
+    out.push({
+      key: 'shouzhuayi', name: '手抓一', fan: 4,
+      ready: clamp01((st.triplets + melds.length - 3) / 1),
+      cost: 0.6, infeasible: (st.triplets + melds.length) < 3
+    });
+
+    return out;
+  }
+
+  /** 计划对「打这张牌」的偏好：打掉计划外的牌加分，留计划要的牌（返回 -1~+1） */
+  function planTileBias(plan, view, tile) {
+    if (!plan) return 0;
+    var hand = view.hand, melds = view.melds || [];
+    var counts = T.countsOf(hand);
+    var c = counts[tile] || 0;
+    var honor = T.isHonor(tile);
+    if (plan.key === 'qingyise') {
+      var per = [0, 0, 0];
+      for (var t = 0; t < TT; t++) {
+        var cc = counts[t];
+        if (!cc || T.isHonor(t)) continue;
+        per[T.suitOf(t)] += cc;
+      }
+      var best = Math.max(per[0], per[1], per[2]);
+      var bestSuit = per.indexOf(best);
+      if (honor) return 0.7;
+      return T.suitOf(tile) === bestSuit ? -0.8 : 0.9;
+    }
+    if (plan.key === 'qidui' || plan.key === 'longqidui') {
+      if (c >= 2) return -1.0;       // 对子留着
+      return 0.9;                    // 单张打掉，去凑对子
+    }
+    if (plan.key === 'pengpeng') {
+      if (c >= 2) return -0.9;       // 对子/刻子留着
+      // 顺子里的中张更容易被拆，优先打端张和孤张
+      return T.isHonor(tile) ? 0.2 : 0.6;
+    }
+    if (plan.key === 'dasanyuan' || plan.key === 'xiaosanyuan') {
+      if (DRAGONS.indexOf(tile) >= 0) return -1.5;   // 三元牌绝对留着
+      return honor ? 0.4 : 0.7;
+    }
+    if (plan.key === 'sigui') {
+      return c >= 3 ? -1.5 : (c === 0 ? 0 : 0.3);
+    }
+    if (plan.key === 'shouzhuayi') {
+      return c >= 2 ? -0.5 : 0.4;
+    }
+    return 0;
+  }
+
+  /**
+   * 每巡更新计划（在出牌前调用一次）
+   * @returns {{plan: object|null, state: object, events: Array}}
+   *   events: [{type:'enter'|'abandon'|'reenter'|'switch', key, name, why}]
+   */
+  function updatePlan(view) {
+    var p = profileOf(view.diff);
+    var state = view.planState || null;
+    var events = [];
+    if (!p.plan) return { plan: null, state: null, events: events };
+    if (!state) state = { key: null, name: null, at: 0, progress: 0, stall: 0, dormant: {}, lastTurn: -1 };
+
+    var turn = (view.wallCount === undefined ? 30 : (40 - view.wallCount));
+    if (state.lastTurn === turn) return { plan: state.key ? state : null, state: state, events: events };
+    state.lastTurn = turn;
+
+    var threat = opponentThreat(view);
+    var cands = planCandidates(view);
+    var cur = null, best = null, bestEv = -999;
+    cands.forEach(function (c) {
+      if (c.infeasible) return;
+      var ev = c.fan * c.ready - c.cost * p.planCostPerTurn;
+      c.ev = ev;
+      if (c.key === (state.key || '')) cur = c;
+      if (ev > bestEv) { bestEv = ev; best = c; }
+    });
+
+    function enterKey(c, why) {
+      events.push({ type: state.key ? 'switch' : 'enter', key: c.key, name: c.name, why: why });
+      state.key = c.key;
+      state.name = c.name;
+      state.at = turn;
+      state.progress = c.ready;
+      state.stall = 0;
+    }
+    function abandonKey(why) {
+      if (!state.key) return;
+      state.dormant[state.key] = { progress: state.progress, at: turn };
+      events.push({ type: 'abandon', key: state.key, name: state.name, why: why });
+      state.key = null;
+      state.name = null;
+      state.stall = 0;
+      state.blockedTurn = turn;     // 同一巡内不再立刻重新立计划（避免抖动）
+    }
+
+    if (state.key) {
+      // 已有计划：看进展、看威胁、看是否还值得
+      var progress = cur ? cur.ready : 0;
+      if (cur && !cur.infeasible) {
+        if (progress > state.progress + 0.02) { state.progress = progress; state.stall = 0; }
+        else state.stall++;
+      } else {
+        abandonKey('已经不可能了');
+      }
+      var evNow = cur ? cur.ev : -999;
+      if (state.key) {
+        if (evNow < p.planExit) abandonKey('不值了');
+        else if (state.stall >= p.planStallLimit) abandonKey('连续 ' + state.stall + ' 巡没进展');
+        else if (threat >= p.planAbandonThreat) abandonKey('对手威胁太大');
+      }
+    }
+
+    // 没计划（或刚放弃）：看看有没有值得开的；包括「休眠过的番型重新激活」
+    if (!state.key && best && bestEv >= p.planEnter && state.blockedTurn !== turn) {
+      var dom = state.dormant[best.key];
+      if (dom && best.ready < dom.progress + p.planDormantGap) {
+        // 还没恢复到能重新捡起来的程度 → 不激活
+      } else {
+        if (dom) {
+          events.push({ type: 'reenter', key: best.key, name: best.name, why: '条件恢复了' });
+          delete state.dormant[best.key];
+        }
+        enterKey(best, 'EV ' + bestEv.toFixed(1));
+      }
+    }
+    // 休眠记录慢慢过期（牌山快没了就别再惦记）
+    Object.keys(state.dormant).forEach(function (k) {
+      if (turn - state.dormant[k].at > 6) delete state.dormant[k];
+    });
+
+    var plan = null;
+    if (state.key) {
+      plan = { key: state.key, name: state.name, at: state.at, progress: state.progress };
+    }
+    return { plan: plan, state: state, events: events };
+  }
+
   /** 出牌决策；hand 为摸牌后的 14 张（或 3n+2 张）
    *  view.allowed 存在时只在这几张里选（亮倒锁死、或不能打亮倒者的听张） */
   function chooseDiscard(view) {
@@ -369,6 +667,9 @@
       shantenW = p.retreatShantenW;
     }
 
+    // 做牌计划（困难/成长档）：目标番型由 game 每巡更新后放在 view.plan 里
+    var plan = view.plan || null;
+
     for (var i = 0; i < options.length; i++) {
       var t = options[i];
       var rest = without(hand, t, 1);
@@ -384,6 +685,7 @@
       if (p.leftRiskW) total -= leftoverDanger(view, rest) * p.leftRiskW * dangerMul;
       if (p.waitQualityW && ev.shape) total += ev.shape * p.waitQualityW; // 听牌质量（几面听）
       if (hmHot[t]) total -= 70 * hmConf;                                // 他常胡这张 → 更不想切
+      if (plan && p.planBiasW) total += planTileBias(plan, view, t) * p.planBiasW; // 为计划留牌
       if (jitter) total += ((view.rng ? view.rng() : Math.random()) - 0.5) * jitter;
 
       if (!best || total > best.total) {
@@ -886,6 +1188,12 @@
     leftoverDanger: leftoverDanger,
     fanPotential: fanPotential,
     kongPayoff: kongPayoff,
+    // 做牌计划层
+    planCandidates: planCandidates,
+    updatePlan: updatePlan,
+    planTileBias: planTileBias,
+    handStats: handStats,
+    PLAN_DEFS: PLAN_DEFS,
     LIANGDAO: LIANGDAO,
     // 难度档
     DIFFICULTY: DIFFICULTY,

@@ -1540,6 +1540,77 @@ function playOne(seed, stats) {
     assert.strictEqual(n.fanBiasQidui, 0);
   });
 
+  await testAsync('做牌计划层：会立目标番型（四对同门→清一色），没进展会放弃，条件恢复能重新捡起来', async () => {
+    const AI = require('../js/ai.js');
+    const mk = (hand, wall, st) => {
+      const discards = [[], [], []];
+      const meldsByPlayer = [[], [], []];
+      return {
+        seat: 0, hand: hand.slice(), melds: [], discards: discards, meldsByPlayer: meldsByPlayer,
+        remain: AI.buildRemain({ hand: hand, discards: discards, meldsByPlayer: meldsByPlayer }),
+        wallCount: wall, rules: R.DEFAULT_RULES, diff: 'hard', planState: st || null,
+        liangdaoLearn: AI.newLearnTable(), rng: () => 0.5
+      };
+    };
+
+    // ① 四对同门：应该立「清一色」
+    let st = null;
+    let res = AI.updatePlan(mk(H('11t 33t 55t 77t 246t 9t'), 30, st));
+    assert.ok(res.plan, '四对同门应该立一个计划');
+    assert.strictEqual(res.plan.key, 'qingyise', '应该选清一色（七对离得还远），实际 ' + res.plan.name);
+    st = res.state;
+
+    // ② 连续几巡原地不动 → 放弃
+    let abandoned = null;
+    for (let i = 0; i < 4 && !abandoned; i++) {
+      res = AI.updatePlan(mk(H('11t 33t 55t 77t 246t 9t'), 29 - i, st));
+      st = res.state;
+      res.events.forEach(e => { if (e.type === 'abandon') abandoned = e; });
+    }
+    assert.ok(abandoned, '连续没进展应该放弃（实际没放弃）');
+    assert.ok(abandoned.why.length > 0, '放弃要有原因');
+
+    // ③ 休眠过的番型条件恢复后能重新捡起来（直接构造休眠状态，避免受随机牌局影响）
+    const dormantState = {
+      key: null, name: null, at: 0, progress: 0, stall: 0, lastTurn: -1,
+      dormant: { qingyise: { progress: 0.3, at: 5 } }
+    };
+    res = AI.updatePlan(mk(H('11t 33t 55t 66t 77t 88t 246t'), 25, dormantState));
+    const reentered = res.events.filter(e => e.type === 'reenter')[0];
+    assert.ok(reentered, '休眠的番型条件恢复后应该能重新捡起来：' + JSON.stringify(res.events));
+    assert.strictEqual(reentered.key, 'qingyise');
+
+    // ④ 普通档不启用计划层
+    const plain = mk(H('11t 33t 55t 77t 246t 9t'), 30, null);
+    plain.diff = 'normal';
+    const r2 = AI.updatePlan(plain);
+    assert.strictEqual(r2.plan, null, '普通档不该有做牌计划');
+    assert.strictEqual(r2.events.length, 0);
+  });
+
+  await testAsync('做牌计划会写进对局记录（回放里能看到 AI 当时想做什么番）', async () => {
+    const g = new Game({ speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: 'hard', seed: 4321 });
+    g.players.forEach(p => { p.isAI = true; });
+    let withPlan = [];
+    for (let i = 0; i < 4 && withPlan.length === 0; i++) {
+      await g.startRound();
+      const h = g.history[g.history.length - 1];
+      assert.ok(h && h.replay, '应该有回放数据');
+      withPlan = (h.replay.events || []).filter(e => e.t === 'discard' && e.plan);
+    }
+    assert.ok(withPlan.length > 0, '几局之内应该有带「做牌计划」的切牌事件');
+    assert.ok(withPlan[0].plan.length > 0, '计划应该有名字');
+    // 普通档不产生计划标记
+    const g2 = new Game({ speed: 0, rules: R.DEFAULT_RULES, aiDifficulty: 'normal', seed: 4321 });
+    g2.players.forEach(p => { p.isAI = true; });
+    for (let i = 0; i < 2; i++) {
+      await g2.startRound();
+      const h2 = g2.history[g2.history.length - 1];
+      const withPlan2 = (h2.replay.events || []).filter(e => e.t === 'discard' && e.plan);
+      assert.strictEqual(withPlan2.length, 0, '普通档不该有做牌计划标记');
+    }
+  });
+
   /* ------------------------------------------------------------------ */
   group('对局记录 / 统计');
 

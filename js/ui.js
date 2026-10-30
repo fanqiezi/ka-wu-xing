@@ -1473,6 +1473,7 @@
         drawn: drawnCount,
         drew: (meta && meta.drew) || null,     // 这一帧刚摸牌的人/牌（画在手牌右侧）
         cut: (meta && meta.cut) || null,       // 这一帧的切牌方式（摸切 / 手切）
+        plan: (meta && meta.plan) || null,     // 这一帧该座位当时的做牌计划
         text: text
       });
     }
@@ -1492,7 +1493,10 @@
         removeTileFrom(hands[ev.seat], ev.tile);
         discards[ev.seat].push(ev.tile);
         push(n + (ev.tsumogiri ? ' 摸切 ' : ' 手切 ') + tn,
-          { cut: { seat: ev.seat, tsumogiri: !!ev.tsumogiri } });
+          {
+            cut: { seat: ev.seat, tsumogiri: !!ev.tsumogiri },
+            plan: ev.plan ? { seat: ev.seat, name: ev.plan } : null
+          });
       } else if (ev.t === 'pong') {
         removeTileFrom(hands[ev.seat], ev.tile);
         removeTileFrom(hands[ev.seat], ev.tile);
@@ -1647,7 +1651,9 @@
       var p = state.players[seat];
       html += '<div class="rp-seat' + (seat === 0 ? ' rp-self' : '') + '">';
       html += '<div class="rp-name">' + p.name +
-        (f.liangdao[seat] ? '<span class="tag liangdao">亮倒</span>' : '') + '</div>';
+        (f.liangdao[seat] ? '<span class="tag liangdao">亮倒</span>' : '') +
+        (f.plan && f.plan.seat === seat ? '<span class="tag plan">做牌：' + f.plan.name + '</span>' : '') +
+        '</div>';
       // 手牌：刚摸到的那张单独摆到右边（和牌桌上一样的看法）
       var drew = (f.drew && f.drew.seat === seat) ? f.drew.tile : null;
       var handTiles = f.hands[seat].slice();
