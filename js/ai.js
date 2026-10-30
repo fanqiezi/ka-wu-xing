@@ -104,7 +104,7 @@
       kongTradeoff: true,
       mixBand: 0.10,
       plan: true,                 // 做牌计划层：会立目标番型、也会放弃和重新捡起来
-      planBiasW: 70               // 计划对留牌的偏置（先给保守值：强度越大牌效损失越多）
+      planBiasW: 60               // 计划对留牌的偏置（保守值：宁可不赚，也不拖垮牌效）
     }),
     // 成长型：困难 + 记忆（记忆内容在 P3 落地，这里先把开关和档位准备好）
     growth: Object.assign({}, NORMAL_PROFILE, {
@@ -130,7 +130,7 @@
       kongTradeoff: true,
       mixBand: 0.12,
       plan: true,
-      planBiasW: 80,
+      planBiasW: 70,
       learn: true
     })
   };
